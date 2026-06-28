@@ -76,7 +76,7 @@ export type ExtractSource = z.infer<typeof ExtractSource>;
  * variable `variable`, so later nodes can reference `{{ variable }}`.
  */
 export const ExtractRule = z.object({
-  variable: z.string().min(1),
+  variable: z.string(),
   source: ExtractSource.default('body'),
   engine: ExtractEngine.default('jsonpath'),
   expression: z.string().default(''),
@@ -94,6 +94,8 @@ export const RequestNodeConfig = z.object({
   options: ExecutionOptions.partial().optional(),
   /** Response → variable mappings applied after the request succeeds. */
   extract: z.array(ExtractRule).default([]),
+  /** The collection request this node was imported from (for display / re-sync). */
+  requestId: z.string().optional(),
 });
 export type RequestNodeConfig = z.infer<typeof RequestNodeConfig>;
 
@@ -104,7 +106,7 @@ export type RequestNodeConfig = z.infer<typeof RequestNodeConfig>;
  * `variable`.
  */
 export const TransformNodeConfig = z.object({
-  variable: z.string().min(1),
+  variable: z.string(),
   engine: z.enum(['template', 'jsonpath', 'jmespath', 'regex']).default('template'),
   input: z.string().default(''),
   expression: z.string().default(''),
@@ -112,7 +114,7 @@ export const TransformNodeConfig = z.object({
 export type TransformNodeConfig = z.infer<typeof TransformNodeConfig>;
 
 export const SetVariableNodeConfig = z.object({
-  key: z.string().min(1),
+  key: z.string(),
   value: z.string(),
 });
 export type SetVariableNodeConfig = z.infer<typeof SetVariableNodeConfig>;

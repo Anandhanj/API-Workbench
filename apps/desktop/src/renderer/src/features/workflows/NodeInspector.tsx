@@ -1,22 +1,39 @@
-import { Plus, Trash2 } from 'lucide-react';
-import type { HttpMethod } from '@shared/collection';
+import { useState } from 'react';
+import { ChevronDown, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { cn } from '../../lib/cn';
 import type { ExecutionResponse } from '@shared/execution';
-import type { ExtractRule, NodePolicy, Workflow, WorkflowNode } from '@shared/workflow';
+import type { ExtractRule, NodePolicy, RequestNodeConfig, Workflow, WorkflowNode } from '@shared/workflow';
 import { extractFromResponse } from '@shared/extract';
+import { Modal } from '../../components/menu/Modal';
+import { RequestEditor } from '../runner/RequestEditor';
 import type { FlowNode } from './graph-mapping';
 import { NODE_META } from './node-meta';
+import type { ProjectRequestRef } from './use-project-requests';
+import { draftToNodeConfig, nodeConfigToDraft } from './request-node-draft';
 
-const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const fieldClass =
   'w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-accent';
 const smallField = 'rounded-md border border-border bg-bg px-2 py-1 text-xs outline-none focus:border-accent';
 const labelClass = 'block text-[11px] font-medium uppercase tracking-wide text-muted';
+
+const METHOD_COLOR: Record<string, string> = {
+  GET: 'text-success',
+  POST: 'text-warning',
+  PUT: 'text-accent',
+  PATCH: 'text-violet-400',
+  DELETE: 'text-danger',
+};
+const methodColor = (m: string): string => METHOD_COLOR[m] ?? 'text-muted';
 
 interface NodeInspectorProps {
   node: FlowNode | null;
   workflows: Workflow[];
   /** The selected node's response from the last run, used for live preview. */
   lastResponse?: ExecutionResponse;
+  /** Requests across the project's collections, for the request-node picker. */
+  projectRequests?: ProjectRequestRef[];
+  /** Imports a collection request's definition into the selected request node. */
+  onImportRequest?: (requestId: string) => void;
   onRename: (name: string) => void;
   onConfig: (config: WorkflowNode['config']) => void;
   onPolicy: (policy: NodePolicy | undefined) => void;
@@ -27,11 +44,14 @@ export function NodeInspector({
   node,
   workflows,
   lastResponse,
+  projectRequests = [],
+  onImportRequest,
   onRename,
   onConfig,
   onPolicy,
   onDelete,
 }: NodeInspectorProps): JSX.Element {
+  const [editorOpen, setEditorOpen] = useState(false);
   if (!node) {
     return (
       <div className="p-4 text-sm text-muted">
@@ -61,20 +81,31 @@ export function NodeInspector({
         </Field>
       )}
 
+      {kind === 'request' && onImportRequest && (
+        <CollectionLink
+          requestId={config.requestId as string | undefined}
+          requests={projectRequests}
+          onImport={onImportRequest}
+          onUnlink={() => set({ requestId: undefined })}
+        />
+      )}
+
       {kind === 'request' && (
         <>
-          <Field label="Method" id="node-method">
-            <select id="node-method" value={(config.method as string) ?? 'GET'} onChange={(e) => set({ method: e.target.value })} className={fieldClass}>
-              {METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="URL" id="node-url">
-            <input id="node-url" value={(config.url as string) ?? ''} onChange={(e) => set({ url: e.target.value })} placeholder="https://api.example.com/{{path}}" className={fieldClass} />
-          </Field>
+          <div>
+            <span className={labelClass}>Request</span>
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="mt-1 flex w-full items-center justify-between gap-2 rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm hover:bg-surface-2"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-accent">{(config.method as string) ?? 'GET'}</span>
+                <span className="truncate text-muted">{(config.url as string) || 'Configure…'}</span>
+              </span>
+              <SlidersHorizontal size={14} className="shrink-0 text-muted" />
+            </button>
+          </div>
           <ExtractEditor
             rules={(config.extract as ExtractRule[]) ?? []}
             response={lastResponse}
@@ -211,6 +242,31 @@ export function NodeInspector({
           <Trash2 size={14} /> Delete node
         </button>
       </div>
+
+      {kind === 'request' && editorOpen && (
+        <Modal
+          title={`Configure: ${node.data.name || 'Request'}`}
+          onClose={() => setEditorOpen(false)}
+          maxWidth="max-w-5xl"
+        >
+          <div className="h-[70vh]">
+            <RequestEditor
+              initial={nodeConfigToDraft(node.data.config as RequestNodeConfig)}
+              {...(config.requestId ? { scriptContext: { requestId: config.requestId as string } } : {})}
+              onSave={(draft) => {
+                onConfig(
+                  draftToNodeConfig(
+                    draft,
+                    (config.extract as ExtractRule[]) ?? [],
+                    config.requestId as string | undefined,
+                  ),
+                );
+                setEditorOpen(false);
+              }}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -319,6 +375,95 @@ function ReliabilitySection({
         </Field>
       </div>
     </details>
+  );
+}
+
+function CollectionLink({
+  requestId,
+  requests,
+  onImport,
+  onUnlink,
+}: {
+  requestId: string | undefined;
+  requests: ProjectRequestRef[];
+  onImport: (id: string) => void;
+  onUnlink: () => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const linked = requestId ? requests.find((r) => r.id === requestId) : undefined;
+  const groups = new Map<string, ProjectRequestRef[]>();
+  for (const r of requests) {
+    const list = groups.get(r.collectionName) ?? [];
+    list.push(r);
+    groups.set(r.collectionName, list);
+  }
+  return (
+    <div className="rounded-md border border-border p-2.5">
+      <span className={labelClass}>Load from collection</span>
+      <div className="relative mt-1">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className={cn(fieldClass, 'flex items-center justify-between gap-2')}
+        >
+          <span className="truncate text-muted">
+            {requests.length ? 'Choose a request…' : 'No collection requests'}
+          </span>
+          <ChevronDown size={14} className="shrink-0 text-muted" />
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-auto rounded-md border border-border bg-surface shadow-lg">
+              {requests.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-muted">No collection requests.</p>
+              )}
+              {[...groups.entries()].map(([collection, reqs]) => (
+                <div key={collection}>
+                  <div className="sticky top-0 bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    {collection}
+                  </div>
+                  {reqs.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        onImport(r.id);
+                        setOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-surface-2"
+                    >
+                      <span className={cn('w-12 shrink-0 font-mono text-[10px] font-bold', methodColor(r.method))}>
+                        {r.method}
+                      </span>
+                      <span className="truncate">{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {requestId && (
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px]">
+          <span className="min-w-0 truncate text-muted">
+            Linked:{' '}
+            <span className="text-fg">
+              {linked ? `${linked.collectionName} / ${linked.name}` : 'source removed'}
+            </span>
+          </span>
+          <span className="flex shrink-0 gap-2">
+            <button type="button" onClick={() => onImport(requestId)} disabled={!linked} className="text-accent hover:underline disabled:opacity-40">
+              Re-sync
+            </button>
+            <button type="button" onClick={onUnlink} className="text-muted hover:text-rose-400">
+              Unlink
+            </button>
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

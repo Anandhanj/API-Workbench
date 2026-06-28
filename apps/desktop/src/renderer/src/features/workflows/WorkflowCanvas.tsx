@@ -170,12 +170,28 @@ function Canvas({
         type: 'workbench',
         position,
         deletable: kind !== 'start',
+        selected: true,
         data: { kind, name: meta.label, config: meta.defaultConfig() },
       };
-      apply((s) => ({ ...s, nodes: s.nodes.concat(node) }), true);
+      // Add the node selected (and deselect the rest) so its inspector opens immediately.
+      apply((s) => ({ ...s, nodes: s.nodes.map((n): Node => ({ ...n, selected: false })).concat(node) }), true);
+      setSelectedIds(new Set([node.id]));
     },
     [screenToFlowPosition, apply],
   );
+
+  // Keep the page's inspector in sync with the selected node's *current* data,
+  // not just on selection change — so importing a request or editing config is
+  // reflected immediately in the details panel.
+  useEffect(() => {
+    if (selectedIds.size !== 1) {
+      onSelect(null);
+      return;
+    }
+    const id = [...selectedIds][0];
+    const node = nodes.find((n) => n.id === id);
+    onSelect(node && isElementNode(node) ? node : null);
+  }, [nodes, selectedIds, onSelect]);
 
   // --- Clipboard ---
 
@@ -336,14 +352,13 @@ function Canvas({
         onNodeDragStart={onNodeDragStart}
         onSelectionChange={({ nodes: sel }: { nodes: Node[]; edges: Edge[] }) => {
           setSelectedIds(new Set(sel.map((n: Node) => n.id)));
-          const els = sel.filter(isElementNode);
-          onSelect(els.length === 1 ? (els[0] as FlowNode) : null);
         }}
         onDrop={onDrop}
         onDragOver={(e: React.DragEvent) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
         }}
+        deleteKeyCode={['Backspace', 'Delete']}
         onlyRenderVisibleElements
         fitView
         proOptions={{ hideAttribution: true }}

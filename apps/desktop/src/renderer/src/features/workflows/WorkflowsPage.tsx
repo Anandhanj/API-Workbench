@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Pause, Play, Plus, Save, Square, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
-import type { NodePolicy, NodeRunStatus, WorkflowGraph, WorkflowNode } from '@shared/workflow';
-import { isBridgeAvailable } from '../../lib/ipc';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Pause, Play, Plus, Save, Square, ToggleLeft, ToggleRight, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import type { ExtractRule, NodePolicy, NodeRunStatus, WorkflowGraph, WorkflowNode } from '@shared/workflow';
+import { invoke, isBridgeAvailable } from '../../lib/ipc';
+import { usePersistentState } from '../../lib/use-persistent-state';
 import { useConfirm } from '../../components/confirm/ConfirmProvider';
 import { useActiveSelection, useWorkspaceDetail } from '../workspaces/use-workspaces';
 import { useWorkflow, useWorkflowMutations, useWorkflows, useRunWorkflow, useRunControls } from './use-workflows';
+import { useProjectRequests } from './use-project-requests';
+import { requestDetailToNodeConfig } from './request-import';
 import { WorkflowCanvas, type FlowNode } from './WorkflowCanvas';
 import { NodePalette } from './NodePalette';
 import { NodeInspector } from './NodeInspector';
@@ -28,6 +31,7 @@ export function WorkflowsPage(): JSX.Element {
   const mutations = useWorkflowMutations(projectId);
   const run = useRunWorkflow();
   const controls = useRunControls();
+  const projectRequests = useProjectRequests(projectId);
   const [paused, setPaused] = useState(false);
   const confirm = useConfirm();
 
@@ -38,6 +42,11 @@ export function WorkflowsPage(): JSX.Element {
   const detail = useWorkflow(selectedId);
   const graphRef = useRef<WorkflowGraph | null>(null);
   const mutatorsRef = useRef<Mutators | null>(null);
+
+  // Per-workflow auto-save preference (persisted across restarts).
+  const [autoSaveMap, setAutoSaveMap] = usePersistentState<Record<string, boolean>>('awb.workflow.autosave', {});
+  const autoSaveOn = selectedId ? Boolean(autoSaveMap[selectedId]) : false;
+  const [dirtyAt, setDirtyAt] = useState(0);
 
   // Auto-select the first workflow as the list resolves.
   useEffect(() => {
@@ -87,6 +96,34 @@ export function WorkflowsPage(): JSX.Element {
   const handleCancel = (): void => {
     if (selectedId) controls.cancel.mutate(selectedId);
   };
+
+  const handleImportRequest = async (requestId: string): Promise<void> => {
+    if (!selectedNode || selectedNode.data.kind !== 'request') return;
+    const detail = await invoke('request.get', { id: requestId });
+    const current = selectedNode.data.config as { extract?: ExtractRule[] };
+    mutatorsRef.current?.setConfig(selectedNode.id, requestDetailToNodeConfig(detail, current.extract ?? []));
+  };
+
+  const handleGraphChange = useCallback((g: WorkflowGraph): void => {
+    graphRef.current = g;
+    setDirtyAt(Date.now());
+  }, []);
+
+  const toggleAutoSave = (): void => {
+    if (!selectedId) return;
+    setAutoSaveMap((m) => ({ ...m, [selectedId]: !autoSaveOn }));
+  };
+
+  // Debounced per-workflow auto-save: when enabled, persist ~800ms after the
+  // last graph change. `save` (react-query mutate) is referentially stable.
+  const save = mutations.save.mutate;
+  useEffect(() => {
+    if (!autoSaveOn || !selectedId || !graphRef.current || dirtyAt === 0) return;
+    const id = selectedId;
+    const graph = graphRef.current;
+    const timer = setTimeout(() => save({ id, graph }), 800);
+    return () => clearTimeout(timer);
+  }, [dirtyAt, autoSaveOn, selectedId, save]);
 
   if (!bridge) {
     return (
@@ -206,6 +243,19 @@ export function WorkflowsPage(): JSX.Element {
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
+                onClick={toggleAutoSave}
+                disabled={!selectedId}
+                title={autoSaveOn ? 'Auto-save is on for this workflow' : 'Auto-save is off for this workflow'}
+                aria-pressed={autoSaveOn}
+                className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm disabled:opacity-40 ${
+                  autoSaveOn ? 'border-accent text-accent' : 'border-border text-muted hover:bg-surface-2'
+                }`}
+              >
+                {autoSaveOn ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
+                Auto-save
+              </button>
+              <button
+                type="button"
                 onClick={handleSave}
                 disabled={!selectedId || mutations.save.isPending}
                 className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-40"
@@ -253,9 +303,7 @@ export function WorkflowsPage(): JSX.Element {
                 workflow={detail.data}
                 workflows={(workflows.data ?? []).filter((w) => w.id !== detail.data?.id)}
                 statuses={statuses}
-                onGraphChange={(g) => {
-                  graphRef.current = g;
-                }}
+                onGraphChange={handleGraphChange}
                 onSelect={setSelectedNode}
                 registerMutators={(m) => {
                   mutatorsRef.current = m;
@@ -275,6 +323,8 @@ export function WorkflowsPage(): JSX.Element {
             <NodeInspector
               node={selectedNode}
               workflows={(workflows.data ?? []).filter((w) => w.id !== selectedId)}
+              projectRequests={projectRequests.data ?? []}
+              onImportRequest={(id) => void handleImportRequest(id)}
               lastResponse={run.data?.nodeResults.find((n) => n.nodeId === selectedNode?.id)?.response}
               onRename={(name) => selectedNode && mutatorsRef.current?.rename(selectedNode.id, name)}
               onConfig={(config) => selectedNode && mutatorsRef.current?.setConfig(selectedNode.id, config)}
