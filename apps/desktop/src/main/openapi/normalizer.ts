@@ -14,6 +14,27 @@ const OPERATION_METHODS: Array<[string, HttpMethod]> = [
   ['options', 'OPTIONS'],
 ];
 
+/** Matches a single-brace OpenAPI path template token, e.g. `{userId}`. */
+const PATH_TOKEN_RE = /\{([^{}]+)\}/g;
+
+/**
+ * Rewrites OpenAPI single-brace path tokens (`{userId}`) into the variable
+ * engine's `{{userId}}` form so they resolve as request-scoped variables.
+ */
+function toTemplateVars(segment: string): string {
+  return segment.replace(PATH_TOKEN_RE, (_match, name: string) => `{{${name.trim()}}}`);
+}
+
+/** Distinct template-variable names appearing in a path string, in order. */
+function pathTokenNames(path: string): string[] {
+  const names: string[] = [];
+  for (const match of path.matchAll(PATH_TOKEN_RE)) {
+    const name = match[1].trim();
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -147,7 +168,37 @@ const NONE_BODY: RequestBodyDef = {
   rawBody: '',
   formFields: [],
   binaryBase64: '',
+  binaryFileName: '',
 };
+
+/**
+ * Path-template variables for an operation: a value per `{token}` in the path,
+ * sourced from the declared `in: path` parameter's example/default when present.
+ * Seeded as request-scoped variables on import so `{{token}}` in the URL resolves
+ * and the value persists with the request.
+ */
+function extractPathVariables(
+  params: Record<string, unknown>[],
+  path: string,
+  resolve: Resolver,
+): { key: string; value: string }[] {
+  const declared = new Map<string, string>();
+  for (const param of params) {
+    if (str(param['in']) !== 'path') continue;
+    const name = str(param['name']);
+    if (name) declared.set(name, parameterValue(param, resolve));
+  }
+
+  const result: { key: string; value: string }[] = [];
+  for (const name of pathTokenNames(path)) {
+    result.push({ key: name, value: declared.get(name) ?? '' });
+  }
+  // Declared path params that don't appear literally in the path (rare).
+  for (const [name, value] of declared) {
+    if (!result.some((r) => r.key === name)) result.push({ key: name, value });
+  }
+  return result;
+}
 
 function jsonBody(example: unknown): RequestBodyDef {
   if (example === undefined || example === null) return NONE_BODY;
@@ -210,12 +261,11 @@ function extractBodySwagger2(
 
 /** Builds the persisted request definition from a spec operation. */
 function extractDetails(
-  pathItem: Record<string, unknown>,
+  params: Record<string, unknown>[],
   operation: Record<string, unknown>,
   version: SpecVersion,
   resolve: Resolver,
 ): RequestDetails | undefined {
-  const params = collectParameters(pathItem, operation, resolve);
   const headers: KeyValueEntry[] = [];
   const query: KeyValueEntry[] = [];
   for (const param of params) {
@@ -274,16 +324,19 @@ export function normalizeSpec(
       const name =
         str(operation['summary']) ?? str(operation['operationId']) ?? `${method} ${path}`;
 
-      const details = extractDetails(pathItem, operation, version, resolve);
+      const params = collectParameters(pathItem, operation, resolve);
+      const details = extractDetails(params, operation, version, resolve);
+      const pathVariables = extractPathVariables(params, path, resolve);
 
       operations.push({
         method,
         path,
-        url: `${baseUrl}${path}`,
+        url: `${baseUrl}${toTemplateVars(path)}`,
         name,
         tag,
         ...(str(operation['operationId']) ? { operationId: str(operation['operationId']) } : {}),
         ...(details ? { details } : {}),
+        ...(pathVariables.length ? { pathVariables } : {}),
       });
     }
   }

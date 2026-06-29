@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { NormalizedSpec } from '@shared/openapi';
+import type { NormalizedOperation, NormalizedSpec } from '@shared/openapi';
 import type { PersistenceService } from '../persistence';
 
 export interface GenerateTarget {
@@ -45,6 +45,28 @@ export function detailsKey(details: unknown): string {
 }
 
 /**
+ * Seeds an operation's path-template variables as request-scoped variables, so
+ * `{{token}}` in the request URL resolves and the value persists with the
+ * request. Non-secret and idempotent (upsert keyed by scope/scopeId/key).
+ */
+export function seedPathVariables(
+  persistence: PersistenceService,
+  requestId: string,
+  pathVariables: NormalizedOperation['pathVariables'],
+): void {
+  for (const variable of pathVariables ?? []) {
+    persistence.variables.upsert({
+      scope: 'request',
+      scopeId: requestId,
+      key: variable.key,
+      value: variable.value,
+      secret: false,
+      encrypted: false,
+    });
+  }
+}
+
+/**
  * Generates a collection from a normalized spec: one folder per tag, one request
  * per operation, each linked to its spec operation via a `source` baseline so it
  * can later be synced. Records the collection's spec source (checksum). Runs in a
@@ -71,7 +93,7 @@ export function generateCollection(
     for (const operation of spec.operations) {
       const folderId = operation.tag ? folderByTag.get(operation.tag) ?? null : null;
       const key = operationKey(operation.method, operation.path);
-      persistence.requests.createFromSpec({
+      const created = persistence.requests.createFromSpec({
         collectionId: collection.id,
         folderId,
         name: operation.name,
@@ -86,6 +108,7 @@ export function generateCollection(
           detailsKey: detailsKey(operation.details),
         },
       });
+      seedPathVariables(persistence, created.id, operation.pathVariables);
     }
 
     persistence.collectionSources.upsert({

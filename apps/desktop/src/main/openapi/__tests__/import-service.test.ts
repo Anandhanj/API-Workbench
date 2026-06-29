@@ -93,6 +93,26 @@ describe('ImportService', () => {
     expect(listPets && listPets.type === 'request' && listPets.url).toBe('https://api.petstore.io/v1/pets');
   });
 
+  it('seeds path parameters as request-scoped variables and rewrites the URL', async () => {
+    const result = await importer.import({
+      projectId,
+      source: { type: 'text', content: JSON.stringify(openapi3) },
+    });
+
+    const explorer = new CollectionExplorer(service);
+    const tree = explorer.getTree(result.collectionId);
+    const getUser = tree.find((n) => n.type === 'request' && n.name === 'Get user');
+    expect(getUser && getUser.type === 'request' && getUser.url).toBe(
+      'https://api.petstore.io/v1/users/{{id}}',
+    );
+
+    const requestId = getUser && getUser.type === 'request' ? getUser.id : '';
+    const vars = service.variables.listByScope('request', requestId);
+    expect(vars.map((v) => v.key)).toContain('id');
+    const idVar = vars.find((v) => v.key === 'id');
+    expect(idVar?.secret).toBe(false);
+  });
+
   it('imports a Swagger 2 document and resolves the base URL', async () => {
     const result = await importer.import({
       projectId,

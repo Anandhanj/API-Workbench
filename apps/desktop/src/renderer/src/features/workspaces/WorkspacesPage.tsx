@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, FolderOpen, Plus, Trash2, Upload } from 'lucide-react';
+import { Check, Download, FolderOpen, Loader2, Plus, Trash2, Upload } from 'lucide-react';
 import type { WorkspaceExport } from '@shared/workspace';
 import { cn } from '../../lib/cn';
 import { isBridgeAvailable } from '../../lib/ipc';
@@ -196,11 +196,23 @@ export function WorkspacesPage(): JSX.Element {
                 <li
                   key={project.id}
                   className={cn(
-                    'group flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-surface-2',
-                    project.id === active.data?.projectId && 'bg-surface-2',
+                    'group flex items-center justify-between rounded-md border border-transparent px-3 py-2 text-sm hover:bg-surface-2',
+                    project.id === active.data?.projectId && 'border-border bg-surface-2',
                   )}
                 >
-                  <span className="truncate">{project.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Select ${project.name}`}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => mutations.openProject.mutate(project.id)}
+                  >
+                    {project.id === active.data?.projectId ? (
+                      <Check size={15} className="shrink-0 text-success" />
+                    ) : (
+                      <span className="w-[15px]" />
+                    )}
+                    <span className="truncate">{project.name}</span>
+                  </button>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -245,6 +257,11 @@ export function WorkspacesPage(): JSX.Element {
               )}
             </ul>
           </>
+        ) : activeWorkspaceId && detail.isLoading ? (
+          <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 text-muted">
+            <Loader2 size={28} className="animate-spin" />
+            <p className="text-sm">Loading workspace…</p>
+          </div>
         ) : (
           <p className="text-muted">Select or create a workspace to get started.</p>
         )}

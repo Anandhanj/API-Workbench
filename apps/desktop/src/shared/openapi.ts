@@ -22,6 +22,11 @@ export const NormalizedOperation = z.object({
   operationId: z.string().optional(),
   /** Headers, params, and a body example extracted from the spec operation. */
   details: RequestDetails.optional(),
+  /**
+   * Path-template variables (`{userId}` → `{{userId}}`) seeded as request-scoped
+   * variables on import, with values from the spec's example/default.
+   */
+  pathVariables: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
 });
 export type NormalizedOperation = z.infer<typeof NormalizedOperation>;
 

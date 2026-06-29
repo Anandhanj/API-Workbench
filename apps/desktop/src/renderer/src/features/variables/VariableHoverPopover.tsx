@@ -99,6 +99,12 @@ export function VariableHoverPopover({
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      // The popover is portaled to <body>, but React synthetic events still
+      // bubble along the React tree to the field's wrapper. Without this, every
+      // mousemove over the popover reaches the field's hover handler, which finds
+      // no token under the cursor and schedules a close — so moving onto the
+      // Edit/Save buttons would hide the popover. Stop it at the root.
+      onMouseMove={(e) => e.stopPropagation()}
       style={{ position: 'fixed', top: anchor.bottom + 4, left: anchor.left, zIndex: 60 }}
       className="w-64 rounded-md border border-border bg-surface p-3 text-xs shadow-xl"
     >

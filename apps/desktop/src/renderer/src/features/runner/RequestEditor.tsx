@@ -15,6 +15,7 @@ import { useExecute, useCancel } from './use-execution';
 import { useRunScript, useRunPreScript } from './use-script';
 import { ScriptEditor } from './ScriptEditor';
 import { VariableField } from '../variables/VariableField';
+import { RequestVariablesTab } from '../variables/RequestVariablesTab';
 import { useVariableKeys } from '../variables/use-variable-keys';
 import { useActiveSelection } from '../workspaces/use-workspaces';
 import {
@@ -27,7 +28,7 @@ import {
 } from './build-request';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-type Tab = 'params' | 'auth' | 'headers' | 'body' | 'scripts' | 'settings';
+type Tab = 'params' | 'auth' | 'headers' | 'body' | 'variables' | 'scripts' | 'settings';
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'text-success',
@@ -74,7 +75,7 @@ export function RequestEditor({ initial, onSave, saving, saved, scriptContext }:
   const cancel = useCancel();
   const runScript = useRunScript();
   const runPreScript = useRunPreScript();
-  const suggestions = useVariableKeys();
+  const suggestions = useVariableKeys(scriptContext ?? {});
   const active = useActiveSelection();
   const qc = useQueryClient();
 
@@ -161,6 +162,7 @@ export function RequestEditor({ initial, onSave, saving, saved, scriptContext }:
     { id: 'auth', label: 'Authorization' },
     { id: 'headers', label: 'Headers', badge: activeCount(draft.headers) },
     { id: 'body', label: 'Body' },
+    ...(scriptContext?.requestId ? [{ id: 'variables' as Tab, label: 'Variables' }] : []),
     {
       id: 'scripts',
       label: 'Scripts',
@@ -246,6 +248,9 @@ export function RequestEditor({ initial, onSave, saving, saved, scriptContext }:
           <div className="rounded-md border border-border">
             <KeyValueEditor rows={draft.headers} onChange={(rows) => patch({ headers: rows })} keyPlaceholder="Header" suggestions={suggestions} />
           </div>
+        )}
+        {tab === 'variables' && scriptContext?.requestId && (
+          <RequestVariablesTab requestId={scriptContext.requestId} />
         )}
         {tab === 'auth' && <AuthEditor auth={draft.auth} onChange={(auth) => patch({ auth })} suggestions={suggestions} />}
         {tab === 'body' && (

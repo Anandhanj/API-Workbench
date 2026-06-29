@@ -5,7 +5,7 @@ import type { PersistenceService } from '../persistence';
 import type { SpecRequestRecord } from '../persistence/repositories/request-repository';
 import { parseDocument, detectVersion, validateBasic } from './parser';
 import { normalizeSpec } from './normalizer';
-import { operationKey, checksumContent, detailsKey } from './generator';
+import { operationKey, checksumContent, detailsKey, seedPathVariables } from './generator';
 import { loadSpecContent, type FetchText } from './load';
 
 export interface SyncServiceDeps {
@@ -92,7 +92,7 @@ export class SyncService {
     for (const [key, op] of specOps) {
       const record = byKey.get(key);
       if (!record) {
-        this.persistence.requests.createFromSpec({
+        const created = this.persistence.requests.createFromSpec({
           collectionId,
           folderId: ensureFolder(op.tag),
           name: op.name,
@@ -107,6 +107,9 @@ export class SyncService {
             detailsKey: detailsKey(op.details),
           },
         });
+        // Seed path variables for newly-added requests only; existing requests'
+        // variables are preserved (may carry user-edited values).
+        seedPathVariables(this.persistence, created.id, op.pathVariables);
         changes.push({ type: 'added', key, name: op.name });
         added += 1;
         continue;
