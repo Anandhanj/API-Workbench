@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { NormalizedOperation, NormalizedSpec } from '@shared/openapi';
+import { RequestDetails } from '@shared/request-details';
 import type { PersistenceService } from '../persistence';
 
 export interface GenerateTarget {
@@ -37,11 +38,77 @@ function sortKeys(value: unknown): unknown {
 }
 
 /**
+ * Fields a request definition carries that the OpenAPI import never produces:
+ * the pre-request / post-response scripts and a user description. They are owned
+ * entirely by the user, so they must be excluded from the spec-sync fingerprint —
+ * otherwise simply opening and saving a request in the editor (which fills these
+ * with their schema defaults) would look like a manual edit and block spec
+ * updates. See `SyncService.reconcile`, which preserves them across a sync.
+ */
+const USER_ONLY_DETAIL_FIELDS = ['preRequestScript', 'postResponseScript', 'description'] as const;
+
+/**
+ * Canonical, spec-relevant projection of a request definition: default-filled so
+ * its shape is stable regardless of how it was produced (fresh from the
+ * normalizer vs. round-tripped through the editor), with user-only fields removed.
+ */
+function specRelevantDetails(details: unknown): unknown {
+  if (details === null || details === undefined) return null;
+  const projected = { ...RequestDetails.parse(details) } as Record<string, unknown>;
+  for (const field of USER_ONLY_DETAIL_FIELDS) delete projected[field];
+  return projected;
+}
+
+/**
  * A stable fingerprint of a request definition, used to detect whether the spec
  * baseline or the user's local copy changed during a three-way detail merge.
+ * Computed over the spec-relevant projection so it ignores default-fill noise and
+ * user-only fields the spec never sets.
  */
 export function detailsKey(details: unknown): string {
-  return JSON.stringify(sortKeys(details ?? null));
+  return JSON.stringify(sortKeys(specRelevantDetails(details)));
+}
+
+/**
+ * The workspace-variable key that holds a collection's base URL. Built from the
+ * collection name (runs of non-alphanumeric characters collapsed to a single
+ * underscore) plus a `_baseUrl` suffix, e.g. "Petstore API" -> "Petstore_API_baseUrl".
+ */
+export function baseUrlVariableName(collectionName: string): string {
+  const slug = collectionName
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return `${slug || 'collection'}_baseUrl`;
+}
+
+/**
+ * Rewrites a spec operation URL to reference the base-URL workspace variable: the
+ * leading base URL is replaced with `{{varName}}` so the domain lives in one
+ * editable place (and a re-sync only has to update that variable, not every
+ * request). When the spec declares no base URL the variable holds an empty
+ * placeholder the user can fill in, and the path is prefixed all the same.
+ */
+export function applyBaseUrlVariable(url: string, baseUrl: string, varName: string): string {
+  const suffix = baseUrl && url.startsWith(baseUrl) ? url.slice(baseUrl.length) : url;
+  return `{{${varName}}}${suffix}`;
+}
+
+/** Upserts the collection's base-URL workspace variable (non-secret, idempotent). */
+export function seedBaseUrlVariable(
+  persistence: PersistenceService,
+  workspaceId: string,
+  varName: string,
+  baseUrl: string,
+): void {
+  persistence.variables.upsert({
+    scope: 'workspace',
+    scopeId: workspaceId,
+    key: varName,
+    value: baseUrl,
+    secret: false,
+    encrypted: false,
+  });
 }
 
 /**
@@ -84,6 +151,10 @@ export function generateCollection(
     const collectionName = target.name?.trim() || spec.title;
     const collection = persistence.collections.create({ projectId: target.projectId, name: collectionName });
 
+    const baseUrlVar = baseUrlVariableName(collectionName);
+    const workspaceId = persistence.projects.get(target.projectId).workspaceId;
+    seedBaseUrlVariable(persistence, workspaceId, baseUrlVar, spec.baseUrl);
+
     const folderByTag = new Map<string, string>();
     for (const tag of spec.tags) {
       const folder = persistence.folders.create({ collectionId: collection.id, name: tag });
@@ -93,17 +164,18 @@ export function generateCollection(
     for (const operation of spec.operations) {
       const folderId = operation.tag ? folderByTag.get(operation.tag) ?? null : null;
       const key = operationKey(operation.method, operation.path);
+      const url = applyBaseUrlVariable(operation.url, spec.baseUrl, baseUrlVar);
       const created = persistence.requests.createFromSpec({
         collectionId: collection.id,
         folderId,
         name: operation.name,
         method: operation.method,
-        url: operation.url,
+        url,
         ...(operation.details ? { details: operation.details } : {}),
         source: {
           key,
           method: operation.method,
-          url: operation.url,
+          url,
           name: operation.name,
           detailsKey: detailsKey(operation.details),
         },

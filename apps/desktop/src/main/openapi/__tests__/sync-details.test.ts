@@ -94,7 +94,7 @@ describe('SyncService — request details merge', () => {
     expect(petBody()).toEqual({ name: 'string' });
   });
 
-  it('preserves a user-edited definition and reports a conflict (safe mode)', async () => {
+  it('overwrites a user-edited spec field (header) when the spec definition changes', async () => {
     await importSpec(petSpec({ props: ['name'] }));
     const rec = petRecord();
     const edited = service.requests.getFull(rec.id).details;
@@ -105,8 +105,31 @@ describe('SyncService — request details merge', () => {
       collectionId,
       source: { type: 'text', content: petSpec({ props: ['name', 'age'] }) },
     });
-    expect(result.conflicts).toBe(1);
-    expect(service.requests.getFull(petRecord().id).details.headers[0].value).toBe('my-value');
+    // Spec-driven fields (headers, params, body) follow the spec, reported as a
+    // normal update rather than a conflict.
+    expect(result.conflicts).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(service.requests.getFull(petRecord().id).details.headers[0].value).toBe('string');
+    expect(petBody()).toEqual({ name: 'string', age: 'string' });
+  });
+
+  it('preserves user auth while overwriting the spec-driven body', async () => {
+    await importSpec(petSpec({ props: ['name'] }));
+    const rec = petRecord();
+    const edited = service.requests.getFull(rec.id).details;
+    edited.auth = { type: 'bearer', token: 'secret' };
+    // Also edit the body, which must still be overwritten by the spec.
+    edited.body = { ...edited.body, rawBody: '{ "name": "hand-edited" }' };
+    service.requests.save(rec.id, { details: edited });
+
+    const result = await sync.sync({
+      collectionId,
+      source: { type: 'text', content: petSpec({ props: ['name', 'age'] }) },
+    });
+    expect(result.updated).toBe(1);
+    const full = service.requests.getFull(petRecord().id);
+    expect(JSON.parse(full.details.body.rawBody)).toEqual({ name: 'string', age: 'string' });
+    expect(full.details.auth).toEqual({ type: 'bearer', token: 'secret' });
   });
 
   it('overwrites a user-edited definition in replace mode', async () => {

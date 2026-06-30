@@ -64,6 +64,31 @@ describe('<VariablesPanel />', () => {
     expect(onDelete).toHaveBeenCalledWith('host');
   });
 
+  it('edits a value in place and upserts via onAdd', async () => {
+    const onAdd = vi.fn();
+    const user = userEvent.setup();
+    render(<VariablesPanel variables={[makeVar()]} onAdd={onAdd} onDelete={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Edit host' }));
+    const input = screen.getByLabelText('Edit value for host');
+    fireEvent.change(input, { target: { value: 'https://new.example.com' } });
+    await user.click(screen.getByRole('button', { name: 'Save host' }));
+    expect(onAdd).toHaveBeenCalledWith({
+      key: 'host',
+      value: 'https://new.example.com',
+      secret: false,
+    });
+  });
+
+  it('cancels an edit without calling onAdd', async () => {
+    const onAdd = vi.fn();
+    const user = userEvent.setup();
+    render(<VariablesPanel variables={[makeVar()]} onAdd={onAdd} onDelete={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Edit host' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel editing host' }));
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(screen.getByText('api.example.com')).toBeInTheDocument();
+  });
+
   it('shows an empty state', () => {
     render(<VariablesPanel variables={[]} onAdd={vi.fn()} onDelete={vi.fn()} />);
     expect(screen.getByText(/No variables in this scope yet/)).toBeInTheDocument();

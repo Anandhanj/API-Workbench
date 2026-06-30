@@ -13,6 +13,10 @@ export function useSync(projectId: string | null | undefined) {
       void qc.invalidateQueries({ queryKey: ['collections', projectId ?? ''] });
       // Refresh any open request editor so synced headers/params/body show.
       void qc.invalidateQueries({ queryKey: ['request'] });
+      // Sync upserts the base-URL workspace variable; refresh variable views.
+      void qc.invalidateQueries({ queryKey: ['variables'] });
+      void qc.invalidateQueries({ queryKey: ['variableKeys'] });
+      void qc.invalidateQueries({ queryKey: ['usedVarValues'] });
     },
   });
 }

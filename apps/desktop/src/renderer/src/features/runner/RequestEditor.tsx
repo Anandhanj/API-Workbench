@@ -496,7 +496,7 @@ export function RequestEditor({
 function ScriptResults({ result }: { result: ScriptRunResult | null }): JSX.Element | null {
   if (!result) return null;
   return (
-    <div className="space-y-2 rounded-md border border-border bg-surface p-3 text-xs">
+    <div className="min-w-0 space-y-2 rounded-md border border-border bg-surface p-3 text-xs">
       {result.error && <p className="text-danger">Script error: {result.error}</p>}
 
       {result.tests.length > 0 && (
@@ -514,7 +514,7 @@ function ScriptResults({ result }: { result: ScriptRunResult | null }): JSX.Elem
         <div>
           <p className="mb-1 font-medium text-muted">Variables</p>
           {result.variables.map((v, i) => (
-            <div key={i} className="font-mono">
+            <div key={i} className="break-all font-mono">
               <span className="text-accent">{v.scope}</span>.{v.action === 'set' ? 'set' : 'unset'}(
               {v.key}
               {v.action === 'set' && v.value !== undefined ? `, ${v.value}` : ''})
@@ -526,7 +526,7 @@ function ScriptResults({ result }: { result: ScriptRunResult | null }): JSX.Elem
       {result.logs.length > 0 && (
         <div>
           <p className="mb-1 font-medium text-muted">Console</p>
-          <pre className="whitespace-pre-wrap font-mono text-muted">{result.logs.join('\n')}</pre>
+          <pre className="whitespace-pre-wrap break-all font-mono text-muted">{result.logs.join('\n')}</pre>
         </div>
       )}
 

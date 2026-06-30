@@ -90,7 +90,7 @@ describe('ImportService', () => {
     const explorer = new CollectionExplorer(service);
     const tree = explorer.getTree(result.collectionId);
     const listPets = tree.find((n) => n.type === 'request' && n.name === 'List pets');
-    expect(listPets && listPets.type === 'request' && listPets.url).toBe('https://api.petstore.io/v1/pets');
+    expect(listPets && listPets.type === 'request' && listPets.url).toBe('{{Petstore_baseUrl}}/pets');
   });
 
   it('seeds path parameters as request-scoped variables and rewrites the URL', async () => {
@@ -103,7 +103,7 @@ describe('ImportService', () => {
     const tree = explorer.getTree(result.collectionId);
     const getUser = tree.find((n) => n.type === 'request' && n.name === 'Get user');
     expect(getUser && getUser.type === 'request' && getUser.url).toBe(
-      'https://api.petstore.io/v1/users/{{id}}',
+      '{{Petstore_baseUrl}}/users/{{id}}',
     );
 
     const requestId = getUser && getUser.type === 'request' ? getUser.id : '';

@@ -10,6 +10,10 @@ export function useImport(projectId: string | null | undefined) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['collections', projectId ?? ''] });
       void qc.invalidateQueries({ queryKey: ['tree'] });
+      // Import seeds a base-URL workspace variable; refresh variable views.
+      void qc.invalidateQueries({ queryKey: ['variables'] });
+      void qc.invalidateQueries({ queryKey: ['variableKeys'] });
+      void qc.invalidateQueries({ queryKey: ['usedVarValues'] });
     },
   });
 }

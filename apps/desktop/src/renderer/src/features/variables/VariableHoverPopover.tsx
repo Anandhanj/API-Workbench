@@ -132,7 +132,7 @@ export function VariableHoverPopover({
 
       {hasRuntime ? (
         <div className="space-y-1">
-          <div className="rounded bg-bg px-2 py-1 font-mono text-fg">
+          <div className="break-all rounded bg-bg px-2 py-1 font-mono text-fg">
             {runtimeValue || <span className="text-muted">(empty)</span>}
           </div>
           <p className="text-[11px] text-muted">Current value in this run.</p>
@@ -147,7 +147,7 @@ export function VariableHoverPopover({
         </div>
       ) : !editing ? (
         <>
-          <div className="rounded bg-bg px-2 py-1 font-mono text-muted">
+          <div className="break-all rounded bg-bg px-2 py-1 font-mono text-muted">
             {isUnresolved ? (
               <span className="text-warning">unresolved</span>
             ) : (

@@ -5,8 +5,47 @@ import type { PersistenceService } from '../persistence';
 import type { SpecRequestRecord } from '../persistence/repositories/request-repository';
 import { parseDocument, detectVersion, validateBasic } from './parser';
 import { normalizeSpec } from './normalizer';
-import { operationKey, checksumContent, detailsKey, seedPathVariables } from './generator';
+import {
+  operationKey,
+  checksumContent,
+  detailsKey,
+  seedPathVariables,
+  baseUrlVariableName,
+  applyBaseUrlVariable,
+  seedBaseUrlVariable,
+} from './generator';
 import { loadSpecContent, type FetchText } from './load';
+
+/**
+ * Builds the request definition to persist when the spec's definition changed.
+ *
+ * The spec-derived fields (body, query params, headers) always follow the spec —
+ * manual edits to those are overwritten on sync. The user's auth and execution
+ * options are preserved in safe mode (the spec wins for them in replace mode),
+ * and the user-only fields the spec never sets (scripts, description) are always
+ * carried over.
+ */
+function applySpecDetails(
+  spec: RequestDetails | null,
+  local: RequestDetails | null,
+  mode: SyncMode,
+): RequestDetails | null {
+  const userFields: Partial<RequestDetails> = {
+    preRequestScript: local?.preRequestScript ?? '',
+    postResponseScript: local?.postResponseScript ?? '',
+    ...(local?.description ? { description: local.description } : {}),
+  };
+  if (spec === null) {
+    const hasUserContent =
+      Boolean(userFields.preRequestScript) ||
+      Boolean(userFields.postResponseScript) ||
+      'description' in userFields;
+    return hasUserContent ? ({ ...local, ...userFields } as RequestDetails) : null;
+  }
+  const preserved: Partial<RequestDetails> =
+    mode === 'replace' || local === null ? {} : { auth: local.auth, options: local.options };
+  return { ...spec, ...preserved, ...userFields };
+}
 
 export interface SyncServiceDeps {
   fetchText?: FetchText;
@@ -61,10 +100,21 @@ export class SyncService {
     mode: SyncMode,
     sourceUrl?: string,
   ): SyncResult {
+    // Keep the collection's base-URL workspace variable in sync with the spec, so
+    // a changed domain propagates to every request through the `{{...baseUrl}}`
+    // reference without rewriting each URL.
+    const collection = this.persistence.collections.get(collectionId);
+    const baseUrlVar = baseUrlVariableName(collection.name);
+    const workspaceId = this.persistence.projects.get(collection.projectId).workspaceId;
+    seedBaseUrlVariable(this.persistence, workspaceId, baseUrlVar, spec.baseUrl);
+
     const existing = this.persistence.requests.listSpecOrigin(collectionId);
     const byKey = new Map<string, SpecRequestRecord>(existing.map((r) => [r.source.key, r]));
     const specOps = new Map<string, NormalizedOperation>();
-    for (const op of spec.operations) specOps.set(operationKey(op.method, op.path), op);
+    for (const op of spec.operations) {
+      const url = applyBaseUrlVariable(op.url, spec.baseUrl, baseUrlVar);
+      specOps.set(operationKey(op.method, op.path), { ...op, url });
+    }
 
     const changes: SyncChange[] = [];
     let added = 0;
@@ -199,28 +249,21 @@ export class SyncService {
       }
     }
 
-    // Three-way merge of the request definition (headers/params/body), mirroring
-    // the field merge above. The spec's new definition is `op.details`; the stored
-    // baseline is `source.detailsKey`; the local copy is `record.details`. When the
-    // baseline is absent (request predates this feature) we adopt the local copy as
-    // the baseline, so spec changes still flow through without false conflicts.
+    // The request definition's spec-driven fields (body, query params, headers)
+    // always follow the spec: when the spec definition changes we re-apply it,
+    // overwriting any manual edits to those fields. `applySpecDetails` preserves
+    // the user's auth/options (safe mode) and scripts/description. The stored
+    // baseline is `source.detailsKey`; when absent (request predates the baseline)
+    // we adopt the local copy so spec changes still flow through.
     const specDetails = op.details ?? null;
     const specDetailsKey = detailsKey(specDetails);
     const localDetailsKey = detailsKey(record.details);
     const baselineDetailsKey = record.source.detailsKey ?? localDetailsKey;
-    const detailsManualEdit = localDetailsKey !== baselineDetailsKey;
     const detailsSpecChanged = specDetailsKey !== baselineDetailsKey;
 
     let detailsToWrite: RequestDetails | null | undefined;
     if (detailsSpecChanged) {
-      if (!detailsManualEdit) {
-        detailsToWrite = specDetails; // unedited: adopt the new spec definition
-      } else if (mode === 'replace') {
-        detailsToWrite = specDetails; // overwrite local edits
-      } else {
-        conflict = true; // safe mode: keep local edits, report a conflict
-        conflictFields.push('definition');
-      }
+      detailsToWrite = applySpecDetails(specDetails, record.details, mode);
     }
     const detailsChanged = detailsToWrite !== undefined;
 
