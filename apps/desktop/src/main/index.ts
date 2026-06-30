@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, shell } from 'electron';
+import appIcon from '../../resources/icon.png?asset';
 import { registerIpcHandlers, attachDispatchStream } from './ipc';
 import { logger } from './services/logger';
 import { createBetterSqliteConnection, PersistenceService } from './persistence';
@@ -141,6 +142,9 @@ function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0b0d12',
     title: 'API Workbench',
+    // Windows takes the taskbar icon from the packaged exe; on Linux (and dev)
+    // the window/taskbar icon comes from here. macOS uses the .app bundle icon.
+    ...(process.platform !== 'darwin' ? { icon: appIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

@@ -26,6 +26,7 @@ asarUnpack:
 npmRebuild: true
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
@@ -33,7 +34,6 @@ win:
     - target: portable
       arch:
         - x64
-  # icon: build/icon.ico   # drop a 256x256 .ico here to brand the app
 
 nsis:
   oneClick: false
@@ -47,11 +47,13 @@ portable:
   artifactName: ${productName}-${version}-portable.${ext}
 
 mac:
+  icon: build/icon.icns
   target:
     - dmg
   category: public.app-category.developer-tools
 
 linux:
+  icon: build/icon.png
   target:
     - AppImage
   category: Development

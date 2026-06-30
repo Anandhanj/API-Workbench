@@ -5,7 +5,6 @@ apps/desktop/node_modules/
 # Build output
 dist/
 out/
-build/
 *.tsbuildinfo
 
 # Test / coverage
