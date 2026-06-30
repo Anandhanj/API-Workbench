@@ -7,7 +7,8 @@ import { useActiveSelection, useWorkspaceDetail } from '../workspaces/use-worksp
 import { CollectionNode } from './CollectionNode';
 import type { OpenedRequest } from './CollectionTreeView';
 import { RequestEditor } from '../runner/RequestEditor';
-import { detailToDraft, draftToDetails } from '../runner/build-request';
+import { RequestVariablesUsedPanel } from './RequestVariablesUsedPanel';
+import { detailToDraft, draftToDetails, type RequestDraft } from '../runner/build-request';
 import { Modal } from '../../components/menu/Modal';
 import { ImportPanel } from './ImportPanel';
 import { SyncPanel } from './SyncPanel';
@@ -16,7 +17,12 @@ import { useConfirm } from '../../components/confirm/ConfirmProvider';
 import { useImport } from './use-import';
 import { useSync } from './use-sync';
 import { useVersions, useVersionMutations } from './use-versions';
-import { useCollections, useCollectionMutations, useRequestDetail, useCollectionSource } from './use-collections';
+import {
+  useCollections,
+  useCollectionMutations,
+  useRequestDetail,
+  useCollectionSource,
+} from './use-collections';
 
 export function CollectionsPage(): JSX.Element {
   const bridge = isBridgeAvailable();
@@ -24,8 +30,7 @@ export function CollectionsPage(): JSX.Element {
   const projectId = active.data?.projectId ?? null;
   const workspaceDetail = useWorkspaceDetail(active.data?.workspaceId ?? null);
   const workspaceName = workspaceDetail.data?.workspace.name ?? null;
-  const projectName =
-    workspaceDetail.data?.projects.find((p) => p.id === projectId)?.name ?? null;
+  const projectName = workspaceDetail.data?.projects.find((p) => p.id === projectId)?.name ?? null;
   const collections = useCollections(projectId);
   const mutations = useCollectionMutations(projectId);
   const importer = useImport(projectId);
@@ -37,13 +42,20 @@ export function CollectionsPage(): JSX.Element {
   const [showImport, setShowImport] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<(OpenedRequest & { collectionId: string }) | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<
+    (OpenedRequest & { collectionId: string }) | null
+  >(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [diff, setDiff] = useState<{ versionId: string; data: VersionDiff } | null>(null);
 
   // Resizable left panel (persisted across restarts).
   const [leftWidth, setLeftWidth] = usePersistentState('awb.collections.leftWidth', 288);
+  const [varsPanelCollapsed, setVarsPanelCollapsed] = usePersistentState(
+    'awb.collections.varsPanelCollapsed',
+    false,
+  );
+  const [liveDraft, setLiveDraft] = useState<RequestDraft | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const startResize = (e: React.MouseEvent): void => {
     e.preventDefault();
@@ -77,6 +89,12 @@ export function CollectionsPage(): JSX.Element {
   const requestDetail = useRequestDetail(selectedRequest?.id);
   const collectionSource = useCollectionSource(collectionId);
 
+  // Reset the observed draft when switching requests (re-seeded from the saved
+  // request until the editor reports its first live change).
+  useEffect(() => {
+    setLiveDraft(null);
+  }, [selectedRequest?.id]);
+
   useEffect(() => {
     if (collections.data && collections.data.length > 0) {
       if (!collectionId || !collections.data.some((c) => c.id === collectionId)) {
@@ -103,7 +121,9 @@ export function CollectionsPage(): JSX.Element {
     return (
       <div className="mx-auto max-w-2xl p-8">
         <h1 className="text-2xl font-semibold">Collections</h1>
-        <p className="mt-2 text-muted">Open a project in the Workspaces tab to manage collections.</p>
+        <p className="mt-2 text-muted">
+          Open a project in the Workspaces tab to manage collections.
+        </p>
       </div>
     );
   }
@@ -151,7 +171,11 @@ export function CollectionsPage(): JSX.Element {
       )}
 
       <div ref={splitRef} className="flex min-h-0 flex-1 items-stretch">
-        <section aria-label="Collection list" style={{ width: leftWidth }} className="flex shrink-0 flex-col overflow-hidden pr-3">
+        <section
+          aria-label="Collection list"
+          style={{ width: leftWidth }}
+          className="flex shrink-0 flex-col overflow-hidden pr-3"
+        >
           <form
             className="flex gap-2"
             onSubmit={(e) => {
@@ -168,7 +192,11 @@ export function CollectionsPage(): JSX.Element {
               aria-label="New collection name"
               className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
             />
-            <button type="submit" aria-label="Create collection" className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-fg">
+            <button
+              type="submit"
+              aria-label="Create collection"
+              className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-fg"
+            >
               <Plus size={15} />
             </button>
           </form>
@@ -186,7 +214,9 @@ export function CollectionsPage(): JSX.Element {
                   mutations.openRequest.mutate(req.id);
                 }}
                 onToggleFavorite={(id) => mutations.toggleFavorite.mutate(id)}
-                onAddRequest={(colId) => mutations.createRequest.mutate({ collectionId: colId, name: 'New request' })}
+                onAddRequest={(colId) =>
+                  mutations.createRequest.mutate({ collectionId: colId, name: 'New request' })
+                }
                 onDelete={async (id) => {
                   if (
                     await confirm({
@@ -251,68 +281,87 @@ export function CollectionsPage(): JSX.Element {
 
         <section aria-label="Explorer" className="min-w-0 flex-1 overflow-y-auto pl-3">
           {selectedRequest ? (
-            <div>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                {editingName ? (
-                  <input
-                    autoFocus
-                    value={nameDraft}
-                    onChange={(e) => setNameDraft(e.target.value)}
-                    onBlur={commitName}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitName();
-                      } else if (e.key === 'Escape') {
-                        setEditingName(false);
-                      }
-                    }}
-                    aria-label="Request name"
-                    className="min-w-0 flex-1 rounded border border-accent bg-bg px-2 py-1 text-sm outline-none"
-                  />
-                ) : (
+            <div className="flex min-h-0 gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  {editingName ? (
+                    <input
+                      autoFocus
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onBlur={commitName}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitName();
+                        } else if (e.key === 'Escape') {
+                          setEditingName(false);
+                        }
+                      }}
+                      aria-label="Request name"
+                      className="min-w-0 flex-1 rounded border border-accent bg-bg px-2 py-1 text-sm outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNameDraft(selectedRequest.name);
+                        setEditingName(true);
+                      }}
+                      className="group flex min-w-0 items-center gap-1.5 text-left text-sm font-medium"
+                    >
+                      <span className="truncate">{selectedRequest.name}</span>
+                      <Pencil
+                        size={12}
+                        className="shrink-0 text-muted opacity-0 group-hover:opacity-100"
+                      />
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => {
-                      setNameDraft(selectedRequest.name);
-                      setEditingName(true);
-                    }}
-                    className="group flex min-w-0 items-center gap-1.5 text-left text-sm font-medium"
+                    onClick={() => setSelectedRequest(null)}
+                    className="shrink-0 text-xs text-muted hover:text-fg"
                   >
-                    <span className="truncate">{selectedRequest.name}</span>
-                    <Pencil size={12} className="shrink-0 text-muted opacity-0 group-hover:opacity-100" />
+                    Close
                   </button>
+                </div>
+                {requestDetail.data ? (
+                  <RequestEditor
+                    key={selectedRequest.id}
+                    initial={detailToDraft(requestDetail.data)}
+                    scriptContext={{
+                      collectionId: selectedRequest.collectionId,
+                      requestId: selectedRequest.id,
+                    }}
+                    saving={mutations.saveRequest.isPending}
+                    saved={mutations.saveRequest.isSuccess}
+                    onDraftChange={setLiveDraft}
+                    onSave={(draft) =>
+                      mutations.saveRequest.mutate({
+                        id: selectedRequest.id,
+                        name: selectedRequest.name,
+                        method: draft.method,
+                        url: draft.url,
+                        details: draftToDetails(draft),
+                      })
+                    }
+                  />
+                ) : (
+                  <p className="flex items-center gap-1.5 text-sm text-muted">
+                    <Loader2 size={14} className="animate-spin" /> Loading request…
+                  </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setSelectedRequest(null)}
-                  className="shrink-0 text-xs text-muted hover:text-fg"
-                >
-                  Close
-                </button>
               </div>
-              {requestDetail.data ? (
-                <RequestEditor
-                  key={selectedRequest.id}
-                  initial={detailToDraft(requestDetail.data)}
-                  scriptContext={{ collectionId: selectedRequest.collectionId, requestId: selectedRequest.id }}
-                  saving={mutations.saveRequest.isPending}
-                  saved={mutations.saveRequest.isSuccess}
-                  onSave={(draft) =>
-                    mutations.saveRequest.mutate({
-                      id: selectedRequest.id,
-                      name: selectedRequest.name,
-                      method: draft.method,
-                      url: draft.url,
-                      details: draftToDetails(draft),
-                    })
-                  }
-                />
-              ) : (
-                <p className="flex items-center gap-1.5 text-sm text-muted">
-                  <Loader2 size={14} className="animate-spin" /> Loading request…
-                </p>
-              )}
+              <RequestVariablesUsedPanel
+                draft={liveDraft ?? (requestDetail.data ? detailToDraft(requestDetail.data) : null)}
+                variableContext={{
+                  ...(active.data?.workspaceId ? { workspaceId: active.data.workspaceId } : {}),
+                  collectionId: selectedRequest.collectionId,
+                  requestId: selectedRequest.id,
+                }}
+                collapsed={varsPanelCollapsed}
+                onToggle={() => setVarsPanelCollapsed((v) => !v)}
+              />
             </div>
           ) : collectionId ? (
             <>

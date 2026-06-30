@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { ChevronRight, Copy, Folder as FolderIcon, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react';
+import {
+  ChevronRight,
+  Copy,
+  Folder as FolderIcon,
+  MoreHorizontal,
+  Pencil,
+  Star,
+  Trash2,
+} from 'lucide-react';
 import type { HttpMethod, TreeNode } from '@shared/collection';
 import { cn } from '../../lib/cn';
 import { ContextMenu, type MenuItem } from '../../components/menu/ContextMenu';
@@ -86,7 +94,10 @@ export function CollectionTreeView({
     setEditing(null);
   };
 
-  const renameInput = (originalName: string, rename?: (id: string, name: string) => void): JSX.Element => (
+  const renameInput = (
+    originalName: string,
+    rename?: (id: string, name: string) => void,
+  ): JSX.Element => (
     <input
       autoFocus
       value={editing?.name ?? ''}
@@ -108,20 +119,50 @@ export function CollectionTreeView({
 
   const folderMenu = (node: Extract<TreeNode, { type: 'folder' }>): MenuItem[] => [
     ...(onRenameFolder
-      ? [{ label: 'Rename', icon: <Pencil size={ICON} />, onSelect: () => setEditing({ id: node.id, name: node.name }) }]
+      ? [
+          {
+            label: 'Rename',
+            icon: <Pencil size={ICON} />,
+            onSelect: () => setEditing({ id: node.id, name: node.name }),
+          },
+        ]
       : []),
     ...(onDeleteFolder
-      ? [{ label: 'Delete', icon: <Trash2 size={ICON} />, danger: true, onSelect: () => onDeleteFolder(node.id, node.name) }]
+      ? [
+          {
+            label: 'Delete',
+            icon: <Trash2 size={ICON} />,
+            danger: true,
+            onSelect: () => onDeleteFolder(node.id, node.name),
+          },
+        ]
       : []),
   ];
 
   const requestMenu = (node: Extract<TreeNode, { type: 'request' }>): MenuItem[] => [
-    { label: 'Open', icon: <ChevronRight size={ICON} />, onSelect: () => onOpenRequest({ id: node.id, name: node.name, method: node.method, url: node.url }) },
+    {
+      label: 'Open',
+      icon: <ChevronRight size={ICON} />,
+      onSelect: () =>
+        onOpenRequest({ id: node.id, name: node.name, method: node.method, url: node.url }),
+    },
     ...(onRenameRequest
-      ? [{ label: 'Rename', icon: <Pencil size={ICON} />, onSelect: () => setEditing({ id: node.id, name: node.name }) }]
+      ? [
+          {
+            label: 'Rename',
+            icon: <Pencil size={ICON} />,
+            onSelect: () => setEditing({ id: node.id, name: node.name }),
+          },
+        ]
       : []),
     ...(onDuplicateRequest
-      ? [{ label: 'Duplicate', icon: <Copy size={ICON} />, onSelect: () => onDuplicateRequest(node.id) }]
+      ? [
+          {
+            label: 'Duplicate',
+            icon: <Copy size={ICON} />,
+            onSelect: () => onDuplicateRequest(node.id),
+          },
+        ]
       : []),
     ...(onToggleFavorite
       ? [
@@ -133,7 +174,14 @@ export function CollectionTreeView({
         ]
       : []),
     ...(onDeleteRequest
-      ? [{ label: 'Delete', icon: <Trash2 size={ICON} />, danger: true, onSelect: () => onDeleteRequest(node.id, node.name) }]
+      ? [
+          {
+            label: 'Delete',
+            icon: <Trash2 size={ICON} />,
+            danger: true,
+            onSelect: () => onDeleteRequest(node.id, node.name),
+          },
+        ]
       : []),
   ];
 
@@ -184,11 +232,16 @@ export function CollectionTreeView({
             <ChevronRight
               size={14}
               onClick={() => !isEditing && onToggleFolder(node.id)}
-              className={cn('shrink-0 cursor-pointer text-muted transition-transform', open && 'rotate-90')}
+              className={cn(
+                'shrink-0 cursor-pointer text-muted transition-transform',
+                open && 'rotate-90',
+              )}
             />
             <FolderIcon size={15} className="ml-1.5 shrink-0 text-accent" />
             {isEditing ? (
-              <span className="ml-1.5 flex min-w-0 flex-1">{renameInput(node.name, onRenameFolder)}</span>
+              <span className="ml-1.5 flex min-w-0 flex-1">
+                {renameInput(node.name, onRenameFolder)}
+              </span>
             ) : (
               <button
                 type="button"
@@ -233,8 +286,16 @@ export function CollectionTreeView({
           )}
         >
           {isEditing ? (
-            <span style={{ paddingLeft: indent + 18 }} className="flex min-w-0 flex-1 items-center gap-2 py-1">
-              <span className={cn('w-12 shrink-0 text-[10px] font-bold tracking-wide', METHOD_COLOR[node.method] ?? 'text-muted')}>
+            <span
+              style={{ paddingLeft: indent + 18 }}
+              className="flex min-w-0 flex-1 items-center gap-2 py-1"
+            >
+              <span
+                className={cn(
+                  'w-12 shrink-0 text-[10px] font-bold tracking-wide',
+                  METHOD_COLOR[node.method] ?? 'text-muted',
+                )}
+              >
                 {node.method}
               </span>
               {renameInput(node.name, onRenameRequest)}
@@ -242,14 +303,21 @@ export function CollectionTreeView({
           ) : (
             <button
               type="button"
-              onClick={() => onOpenRequest({ id: node.id, name: node.name, method: node.method, url: node.url })}
+              onClick={() =>
+                onOpenRequest({ id: node.id, name: node.name, method: node.method, url: node.url })
+              }
               style={{ paddingLeft: indent + 18 }}
               className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
             >
-              <span className={cn('w-12 shrink-0 text-[10px] font-bold tracking-wide', METHOD_COLOR[node.method] ?? 'text-muted')}>
+              <span
+                className={cn(
+                  'w-12 shrink-0 text-[10px] font-bold tracking-wide',
+                  METHOD_COLOR[node.method] ?? 'text-muted',
+                )}
+              >
                 {node.method}
               </span>
-              <span className="truncate">{node.name}</span>
+              <span className="min-w-0 flex-1 truncate">{node.name}</span>
             </button>
           )}
           {!isEditing && onToggleFavorite && (
@@ -259,7 +327,14 @@ export function CollectionTreeView({
               className="px-1"
               onClick={() => onToggleFavorite(node.id)}
             >
-              <Star size={13} className={cn(node.favorite ? 'fill-warning text-warning' : 'text-muted opacity-0 group-hover:opacity-100')} />
+              <Star
+                size={13}
+                className={cn(
+                  node.favorite
+                    ? 'fill-warning text-warning'
+                    : 'text-muted opacity-0 group-hover:opacity-100',
+                )}
+              />
             </button>
           )}
           {!isEditing && items.length > 0 && (
@@ -293,7 +368,9 @@ export function CollectionTreeView({
       }
     : {};
 
-  const menuEl = menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null;
+  const menuEl = menu ? (
+    <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
+  ) : null;
 
   if (nodes.length === 0) {
     return (

@@ -1,48 +1,46 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useUiStore } from './ui-store';
+import { FONT_SCALE_MAX, FONT_SCALE_MIN, useUiStore } from './ui-store';
 
-const reset = (): void =>
-  useUiStore.setState({
-    theme: 'dark',
-    sidebarCollapsed: false,
-    monitorOpen: true,
-    tabs: [{ id: 'home', title: 'Home', path: '/', closable: false }],
-    activeTabId: 'home',
+describe('ui-store font scale', () => {
+  beforeEach(() => {
+    useUiStore.getState().setFontScale(1);
   });
 
-describe('ui-store', () => {
-  beforeEach(reset);
+  it('clamps within bounds and rounds to one decimal', () => {
+    useUiStore.getState().setFontScale(5);
+    expect(useUiStore.getState().fontScale).toBe(FONT_SCALE_MAX);
 
-  it('toggles theme between dark and light', () => {
-    expect(useUiStore.getState().theme).toBe('dark');
-    useUiStore.getState().toggleTheme();
-    expect(useUiStore.getState().theme).toBe('light');
+    useUiStore.getState().setFontScale(0.1);
+    expect(useUiStore.getState().fontScale).toBe(FONT_SCALE_MIN);
+
+    useUiStore.getState().setFontScale(1.234);
+    expect(useUiStore.getState().fontScale).toBeCloseTo(1.2);
   });
 
-  it('opens a new tab and activates it', () => {
-    useUiStore.getState().openTab({ id: 'settings', title: 'Settings', path: '/settings', closable: true });
-    const state = useUiStore.getState();
-    expect(state.tabs).toHaveLength(2);
-    expect(state.activeTabId).toBe('settings');
+  it('increases and decreases by one step, clamped at the bounds', () => {
+    useUiStore.getState().setFontScale(1);
+    useUiStore.getState().increaseFontScale();
+    expect(useUiStore.getState().fontScale).toBeCloseTo(1.1);
+
+    useUiStore.getState().setFontScale(FONT_SCALE_MAX);
+    useUiStore.getState().increaseFontScale();
+    expect(useUiStore.getState().fontScale).toBe(FONT_SCALE_MAX);
+
+    useUiStore.getState().setFontScale(FONT_SCALE_MIN);
+    useUiStore.getState().decreaseFontScale();
+    expect(useUiStore.getState().fontScale).toBe(FONT_SCALE_MIN);
   });
 
-  it('does not duplicate an already-open tab', () => {
-    const tab = { id: 'settings', title: 'Settings', path: '/settings', closable: true };
-    useUiStore.getState().openTab(tab);
-    useUiStore.getState().openTab(tab);
-    expect(useUiStore.getState().tabs).toHaveLength(2);
+  it('resets to the default of 1', () => {
+    useUiStore.getState().setFontScale(1.4);
+    useUiStore.getState().resetFontScale();
+    expect(useUiStore.getState().fontScale).toBe(1);
   });
 
-  it('closes a closable tab and falls back to home', () => {
-    useUiStore.getState().openTab({ id: 'settings', title: 'Settings', path: '/settings', closable: true });
-    useUiStore.getState().closeTab('settings');
-    const state = useUiStore.getState();
-    expect(state.tabs).toHaveLength(1);
-    expect(state.activeTabId).toBe('home');
-  });
-
-  it('refuses to close a non-closable tab', () => {
-    useUiStore.getState().closeTab('home');
-    expect(useUiStore.getState().tabs).toHaveLength(1);
+  it('persists the font scale to localStorage', () => {
+    useUiStore.getState().setFontScale(1.3);
+    const raw = localStorage.getItem('awb.ui');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string).state.fontScale).toBe(1.3);
   });
 });

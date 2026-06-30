@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Save, Send, X } from 'lucide-react';
 import type { HttpMethod } from '@shared/collection';
 import type { ExecutionResponse } from '@shared/execution';
@@ -62,6 +62,8 @@ export interface RequestEditorProps {
   scriptContext?: { collectionId?: string; requestId?: string };
   /** Extra suggestions (e.g. upstream-step variables) merged ahead of stored vars. */
   extraSuggestions?: VariableSuggestion[];
+  /** Observes the live draft (debounced) — used to drive the variables-used panel. */
+  onDraftChange?: (draft: RequestDraft) => void;
 }
 
 /** A full REST request editor: method/URL/Send plus tabbed params, auth, headers, body, scripts, and settings, with a response panel. */
@@ -72,6 +74,7 @@ export function RequestEditor({
   saved,
   scriptContext,
   extraSuggestions,
+  onDraftChange,
 }: RequestEditorProps): JSX.Element {
   const [draft, setDraft] = useState<RequestDraft>(
     initial ?? defaultDraft('GET', 'https://httpbin.org/get'),
@@ -97,6 +100,13 @@ export function RequestEditor({
   const qc = useQueryClient();
 
   const patch = (p: Partial<RequestDraft>): void => setDraft((d) => ({ ...d, ...p }));
+
+  // Report the live draft upward (debounced) so a parent can show variables in use.
+  useEffect(() => {
+    if (!onDraftChange) return;
+    const t = setTimeout(() => onDraftChange(draft), 250);
+    return () => clearTimeout(t);
+  }, [draft, onDraftChange]);
 
   const onUrlChange = (url: string): void =>
     setDraft((d) => ({ ...d, url, params: parseQueryParams(url) }));

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { VariableScope } from '@shared/variable';
 import { isBridgeAvailable } from '../../lib/ipc';
-import { useActiveSelection } from '../workspaces/use-workspaces';
+import { useActiveSelection, useWorkspaceDetail } from '../workspaces/use-workspaces';
 import { VariablesPanel } from './VariablesPanel';
 import { useVariables, useVariableMutations } from './use-variables';
 
@@ -16,6 +16,8 @@ export function VariablesPage(): JSX.Element {
   const bridge = isBridgeAvailable();
   const active = useActiveSelection();
   const workspaceId = active.data?.workspaceId ?? null;
+  const workspaceDetail = useWorkspaceDetail(workspaceId);
+  const workspaceName = workspaceDetail.data?.workspace.name ?? null;
   const [scope, setScope] = useState<EditableScope>('global');
 
   const scopeId = scope === 'workspace' ? (workspaceId ?? undefined) : undefined;
@@ -57,6 +59,13 @@ export function VariablesPage(): JSX.Element {
             }`}
           >
             {s.label}
+            {s.id === 'workspace' && workspaceName && (
+              <span
+                className={`ml-1.5 text-xs ${scope === s.id ? 'text-accent-fg/80' : 'text-muted'}`}
+              >
+                ({workspaceName})
+              </span>
+            )}
           </button>
         ))}
       </div>
