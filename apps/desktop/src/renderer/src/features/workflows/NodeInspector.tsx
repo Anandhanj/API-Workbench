@@ -242,16 +242,17 @@ export function NodeInspector({
       )}
 
       {kind === 'condition' && (
-        <Field label="Expression (truthy → true)" id="node-expr">
+        <Field label="Expression" id="node-expr">
           <VariableField
             value={(config.expression as string) ?? ''}
             onChange={(expression) => set({ expression })}
             suggestions={suggestions}
             variableContext={variableContext}
-            aria-label="Expression (truthy → true)"
-            placeholder="{{status}}"
+            aria-label="Expression"
+            placeholder="{{status}} == 200"
             className={fieldClass}
           />
+          <ExpressionHelp />
         </Field>
       )}
 
@@ -318,9 +319,10 @@ export function NodeInspector({
                   suggestions={suggestions}
                   variableContext={variableContext}
                   aria-label="Loop condition"
-                  placeholder="{{hasMore}}"
+                  placeholder="{{count}} < 10"
                   className={fieldClass}
                 />
+                <ExpressionHelp />
               </Field>
               <Field label="Max iterations" id="node-loop-max">
                 <input
@@ -787,6 +789,16 @@ function Field({
       </label>
       {children}
     </div>
+  );
+}
+
+function ExpressionHelp(): JSX.Element {
+  return (
+    <p className="mt-1 text-[11px] leading-snug text-muted">
+      Compare with <code>== != &gt; &lt; &gt;= &lt;=</code>, or <code>contains</code>,{' '}
+      <code>startsWith</code>, <code>endsWith</code>, <code>matches</code>; combine with{' '}
+      <code>&amp;&amp;</code> / <code>||</code>. A bare value is true unless empty/false/0.
+    </p>
   );
 }
 

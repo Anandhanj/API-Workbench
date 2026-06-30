@@ -158,9 +158,12 @@ export const SubWorkflowNodeConfig = z.object({
 export type SubWorkflowNodeConfig = z.infer<typeof SubWorkflowNodeConfig>;
 
 /**
- * Branches on a truthy expression. Outgoing edges are labelled `true`/`false`
- * (edge `sourceHandle`). The expression is a `{{ template }}`; the result is
- * truthy unless it is empty or one of false/0/no/null/undefined.
+ * Branches on a condition. Outgoing edges are labelled `true`/`false` (edge
+ * `sourceHandle`). The expression supports comparisons (`==` `!=` `>` `>=` `<`
+ * `<=`), string ops (`contains`, `startsWith`, `endsWith`, `matches`), and
+ * `&&`/`||`; operands resolve `{{ templates }}`. A bare value (no operator) is
+ * truthy unless it is empty or one of false/0/no/null/undefined. See
+ * {@link evaluateCondition} in `shared/condition`.
  */
 export const ConditionNodeConfig = z.object({
   expression: z.string(),

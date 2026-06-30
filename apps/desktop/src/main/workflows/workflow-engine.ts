@@ -12,6 +12,7 @@ import type {
   WorkflowRunStatus,
 } from '@shared/workflow';
 import { applyTransform, extractAll } from '@shared/extract';
+import { evaluateCondition } from '@shared/condition';
 import { WorkflowError } from './errors';
 import { resolveTarget, validateGraph } from './workflow-graph';
 
@@ -93,7 +94,11 @@ export class WorkflowEngine {
 
   async run(workflow: WorkflowDetail, options: RunOptions = {}): Promise<WorkflowRunResult> {
     const startedAt = this.now();
-    const control = options.control ?? (options.signal ? { signal: options.signal, waitIfPaused: () => Promise.resolve() } : NO_PAUSE);
+    const control =
+      options.control ??
+      (options.signal
+        ? { signal: options.signal, waitIfPaused: () => Promise.resolve() }
+        : NO_PAUSE);
     const runtime: Record<string, string> = { ...(options.runtime ?? {}) };
     const nodeResults: NodeRunResult[] = [];
     const status = await this.runInto(workflow, runtime, nodeResults, control, new Set());
@@ -114,8 +119,10 @@ export class WorkflowEngine {
     control: RunControl,
     stack: Set<string>,
   ): Promise<WorkflowRunStatus> {
-    if (stack.has(workflow.id)) throw new WorkflowError(`Sub-workflow cycle detected at "${workflow.id}"`);
-    if (stack.size >= MAX_DEPTH) throw new WorkflowError(`Sub-workflow nesting exceeded ${MAX_DEPTH}`);
+    if (stack.has(workflow.id))
+      throw new WorkflowError(`Sub-workflow cycle detected at "${workflow.id}"`);
+    if (stack.size >= MAX_DEPTH)
+      throw new WorkflowError(`Sub-workflow nesting exceeded ${MAX_DEPTH}`);
     const index = validateGraph(workflow.graph);
     const nestedStack = new Set(stack).add(workflow.id);
     const ctx: RunContext = { workflowId: workflow.id, runtime };
@@ -137,7 +144,14 @@ export class WorkflowEngine {
       }
 
       this.progress(workflow.id, current);
-      const { result, handle } = await this.executeWithPolicy(current, ctx, control, nestedStack, results, loopCounters);
+      const { result, handle } = await this.executeWithPolicy(
+        current,
+        ctx,
+        control,
+        nestedStack,
+        results,
+        loopCounters,
+      );
       results.push(result);
       this.progress(workflow.id, current, result);
       if (result.variablesSet) Object.assign(runtime, result.variablesSet);
@@ -176,10 +190,21 @@ export class WorkflowEngine {
   ): Promise<NodeOutcome> {
     const policy = node.policy ?? {};
     const attempts = (policy.retries ?? 0) + 1;
-    let outcome: NodeOutcome = { result: this.instant(node, 'failed', 'Not executed'), handle: null };
+    let outcome: NodeOutcome = {
+      result: this.instant(node, 'failed', 'Not executed'),
+      handle: null,
+    };
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      outcome = await this.runOnce(node, ctx, control, stack, results, loopCounters, policy.timeoutMs);
+      outcome = await this.runOnce(
+        node,
+        ctx,
+        control,
+        stack,
+        results,
+        loopCounters,
+        policy.timeoutMs,
+      );
       outcome.result.attempts = attempt;
       if (outcome.result.status !== 'failed') return outcome;
       if (attempt < attempts && !control.signal.aborted) {
@@ -251,7 +276,15 @@ export class WorkflowEngine {
 
         case 'delay': {
           await this.sleep(node.config.ms, control.signal);
-          return { result: { ...base, status: 'success', durationMs: done(), message: `Waited ${node.config.ms} ms` }, handle: null };
+          return {
+            result: {
+              ...base,
+              status: 'success',
+              durationMs: done(),
+              message: `Waited ${node.config.ms} ms`,
+            },
+            handle: null,
+          };
         }
 
         case 'request': {
@@ -308,11 +341,20 @@ export class WorkflowEngine {
             };
           }
           const { values, cancelled } = await this.ports.requestInput(
-            { workflowId: ctx.workflowId, nodeId: node.id, name: node.name, message: node.config.message, fields },
+            {
+              workflowId: ctx.workflowId,
+              nodeId: node.id,
+              name: node.name,
+              message: node.config.message,
+              fields,
+            },
             ctx,
           );
           if (cancelled) {
-            return { result: { ...base, status: 'failed', durationMs: done(), message: 'Input cancelled' }, handle: null };
+            return {
+              result: { ...base, status: 'failed', durationMs: done(), message: 'Input cancelled' },
+              handle: null,
+            };
           }
           return {
             result: {
@@ -320,7 +362,9 @@ export class WorkflowEngine {
               status: 'success',
               durationMs: done(),
               ...(Object.keys(values).length ? { variablesSet: values } : {}),
-              message: Object.keys(values).length ? `Collected ${Object.keys(values).length} value(s)` : 'Continued',
+              message: Object.keys(values).length
+                ? `Collected ${Object.keys(values).length} value(s)`
+                : 'Continued',
             },
             handle: null,
           };
@@ -342,13 +386,24 @@ export class WorkflowEngine {
 
         case 'condition': {
           const handle = this.truthy(node.config.expression, ctx) ? 'true' : 'false';
-          return { result: { ...base, status: 'success', durationMs: done(), message: `→ ${handle}` }, handle };
+          return {
+            result: { ...base, status: 'success', durationMs: done(), message: `→ ${handle}` },
+            handle,
+          };
         }
 
         case 'switch': {
           const value = this.ports.evaluate(node.config.value, ctx).trim();
           const handle = node.config.cases.includes(value) ? value : 'default';
-          return { result: { ...base, status: 'success', durationMs: done(), message: `${value} → ${handle}` }, handle };
+          return {
+            result: {
+              ...base,
+              status: 'success',
+              durationMs: done(),
+              message: `${value} → ${handle}`,
+            },
+            handle,
+          };
         }
 
         case 'loop': {
@@ -356,9 +411,25 @@ export class WorkflowEngine {
           const cont = this.shouldLoop(node.config, count, ctx);
           if (cont) {
             loopCounters.set(node.id, count + 1);
-            return { result: { ...base, status: 'success', durationMs: done(), message: `iteration ${count + 1}` }, handle: 'body' };
+            return {
+              result: {
+                ...base,
+                status: 'success',
+                durationMs: done(),
+                message: `iteration ${count + 1}`,
+              },
+              handle: 'body',
+            };
           }
-          return { result: { ...base, status: 'success', durationMs: done(), message: `done after ${count}` }, handle: 'done' };
+          return {
+            result: {
+              ...base,
+              status: 'success',
+              durationMs: done(),
+              message: `done after ${count}`,
+            },
+            handle: 'done',
+          };
         }
 
         case 'end':
@@ -389,8 +460,7 @@ export class WorkflowEngine {
   }
 
   private truthy(expression: string, ctx: RunContext): boolean {
-    const v = this.ports.evaluate(expression, ctx).trim().toLowerCase();
-    return !['', 'false', '0', 'no', 'null', 'undefined'].includes(v);
+    return evaluateCondition(expression, (template) => this.ports.evaluate(template, ctx));
   }
 
   private shouldLoop(config: LoopNodeConfig, count: number, ctx: RunContext): boolean {
@@ -399,7 +469,11 @@ export class WorkflowEngine {
   }
 
   /** A zero-work node result (start/end and failure sentinels). */
-  private instant(node: WorkflowNode, status: NodeRunResult['status'], message?: string): NodeRunResult {
+  private instant(
+    node: WorkflowNode,
+    status: NodeRunResult['status'],
+    message?: string,
+  ): NodeRunResult {
     const at = this.now();
     return {
       nodeId: node.id,
