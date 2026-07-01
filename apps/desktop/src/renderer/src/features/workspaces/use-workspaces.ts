@@ -69,7 +69,21 @@ export function useWorkspaceMutations() {
     }),
     deleteWorkspace: useMutation({
       mutationFn: (id: string) => invoke('workspace.delete', { id }),
-      onSuccess: invalidateAll,
+      onSuccess: (_data, id) => {
+        // Prevent a NotFoundError from an active `useWorkspaceDetail` observer
+        // still holding the deleted id: (1) synchronously clear the active
+        // selection cache if it pointed at this workspace, so the detail
+        // observer's `enabled` gate flips to false before it can refetch;
+        // (2) drop the stale detail cache entry. `invalidateAll` then refetches
+        // to confirm the self-healed state.
+        qc.setQueryData(
+          keys.active,
+          (prev: { workspaceId: string | null; projectId: string | null } | undefined) =>
+            prev?.workspaceId === id ? { workspaceId: null, projectId: null } : prev,
+        );
+        qc.removeQueries({ queryKey: keys.detail(id) });
+        invalidateAll();
+      },
     }),
     setActiveWorkspace: useMutation({
       mutationFn: (id: string) => invoke('workspace.setActive', { id }),
