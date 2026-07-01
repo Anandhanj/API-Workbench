@@ -3,6 +3,7 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import appIcon from '../../resources/icon.png?asset';
 import { registerIpcHandlers, attachDispatchStream } from './ipc';
 import { logger } from './services/logger';
+import { FileLogSink } from './services/file-log-sink';
 import { createBetterSqliteConnection, PersistenceService } from './persistence';
 import { WorkspaceManager } from './workspace';
 import { CollectionExplorer } from './collections';
@@ -183,8 +184,15 @@ function createMainWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   try {
+    // Start persistent file logging first so everything below — including a fatal
+    // startup error — is captured to disk for debugging.
+    const logDir = app.getPath('logs');
+    const sink = new FileLogSink(logDir);
+    sink.attach(logger);
+    logger.info('app', 'File logging started', { file: sink.filePath });
+
     const services = initServices();
-    registerIpcHandlers(services);
+    registerIpcHandlers(services, { logFilePath: () => sink.filePath });
     logger.info('app', 'Application ready', {
       version: app.getVersion(),
       platform: process.platform,
@@ -208,5 +216,16 @@ app.on('will-quit', () => {
 });
 
 process.on('uncaughtException', (error) => {
-  logger.error('app', 'Uncaught exception in main process', { message: error.message });
+  logger.error('app', 'Uncaught exception in main process', {
+    message: error.message,
+    stack: error.stack,
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : undefined;
+  logger.error('app', 'Unhandled promise rejection in main process', {
+    message: error?.message ?? String(reason),
+    stack: error?.stack,
+  });
 });

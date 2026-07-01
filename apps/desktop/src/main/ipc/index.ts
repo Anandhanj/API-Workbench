@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, BrowserWindow } from 'electron';
+import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -37,6 +37,12 @@ export interface IpcContext {
   execution: ExecutionService;
   testRunner: TestRunner;
   workflows: WorkflowService;
+}
+
+/** Extra, non-service dependencies the IPC layer needs. */
+export interface IpcOptions {
+  /** Resolves the current on-disk debug log path (it changes daily). */
+  logFilePath: () => string;
 }
 
 /** Tracks in-flight executions by id so they can be cancelled. */
@@ -87,7 +93,7 @@ type Handler<C extends IpcChannelName> = (
   request: ReturnType<(typeof IpcChannels)[C]['request']['parse']>,
 ) => Promise<unknown> | unknown;
 
-export function registerIpcHandlers(context: IpcContext): void {
+export function registerIpcHandlers(context: IpcContext, options: IpcOptions): void {
   const {
     persistence,
     workspaces,
@@ -101,6 +107,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     testRunner,
     workflows,
   } = context;
+  const { logFilePath } = options;
 
   // Adapter exposing just what the script sandbox needs from the variable engine.
   const scriptVariables = {
@@ -126,6 +133,11 @@ export function registerIpcHandlers(context: IpcContext): void {
       platform: process.platform,
     }),
     'dispatch.getBuffer': () => logger.getBuffer(),
+    'log.getPath': () => ({ path: logFilePath() }),
+    'log.reveal': () => {
+      shell.showItemInFolder(logFilePath());
+      return {};
+    },
     'dispatch.emit': (request) => {
       logger.log(request.level, `renderer:${request.source}`, request.message, request.context);
       return {};

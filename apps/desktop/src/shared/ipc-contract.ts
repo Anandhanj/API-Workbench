@@ -85,6 +85,10 @@ export const IpcChannels = {
   'dispatch.getBuffer': { request: Empty, response: z.array(DispatchEvent) },
   'dispatch.emit': { request: DispatchEvent.omit({ id: true, timestamp: true }), response: Empty },
 
+  // --- Diagnostics: on-disk log for debugging ---
+  'log.getPath': { request: Empty, response: z.object({ path: z.string() }) },
+  'log.reveal': { request: Empty, response: Empty },
+
   // --- Workspaces ---
   'workspace.list': { request: Empty, response: z.array(Workspace) },
   'workspace.create': { request: CreateWorkspaceInput, response: Workspace },

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { ThemeMode } from '../stores/ui-store';
 import { FONT_SCALE_MAX, FONT_SCALE_MIN, useUiStore } from '../stores/ui-store';
+import { invoke, isBridgeAvailable } from '../lib/ipc';
 
 const THEMES: ThemeMode[] = ['light', 'dark'];
 
@@ -12,6 +14,14 @@ export function SettingsPage(): JSX.Element {
   const increaseFontScale = useUiStore((s) => s.increaseFontScale);
   const decreaseFontScale = useUiStore((s) => s.decreaseFontScale);
   const resetFontScale = useUiStore((s) => s.resetFontScale);
+
+  const [logPath, setLogPath] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isBridgeAvailable()) return;
+    void invoke('log.getPath', {})
+      .then((r) => setLogPath(r.path))
+      .catch(() => undefined);
+  }, []);
 
   return (
     <div className="w-full p-8">
@@ -90,6 +100,40 @@ export function SettingsPage(): JSX.Element {
           <input type="checkbox" checked={monitorOpen} onChange={toggleMonitor} />
           Show dispatch monitor
         </label>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold">Diagnostics</h2>
+        <p className="mt-1 text-sm text-muted">
+          Errors from the app are written to a rotating log file. Share it when reporting a problem.
+        </p>
+        {logPath ? (
+          <>
+            <p className="mt-3 break-all rounded-md border border-border bg-bg px-3 py-2 font-mono text-xs text-muted">
+              {logPath}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void invoke('log.reveal', {}).catch(() => undefined)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
+              >
+                Reveal in file manager
+              </button>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(logPath).catch(() => undefined)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:text-fg"
+              >
+                Copy path
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-3 text-sm text-muted">
+            The log file is available when running inside the desktop app.
+          </p>
+        )}
       </section>
     </div>
   );
