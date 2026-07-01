@@ -62,13 +62,33 @@ describe('SyncService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('adds new operations and removes deleted ones', async () => {
+  it('adds new operations and preserves removed ones in safe mode', async () => {
     const v2 = spec({
       '/a': { tag: 't', summary: 'Get A' },
       '/c': { summary: 'Get C' },
       '/d': { tag: 't', summary: 'Get D' },
     });
     const result = await sync.sync({ collectionId, source: { type: 'text', content: v2 } });
+    expect(result.added).toBe(1);
+    expect(result.removed).toBe(0); // safe merge never deletes
+    expect(result.preserved).toBe(1); // '/b' dropped from the spec but kept
+
+    const names = explorer.getTree(collectionId).filter((n) => n.type === 'request').map((n) => n.name);
+    expect(names).toContain('Get D');
+    expect(names).toContain('Get B'); // preserved, not removed
+  });
+
+  it('deletes operations removed from the spec in replace mode', async () => {
+    const v2 = spec({
+      '/a': { tag: 't', summary: 'Get A' },
+      '/c': { summary: 'Get C' },
+      '/d': { tag: 't', summary: 'Get D' },
+    });
+    const result = await sync.sync({
+      collectionId,
+      mode: 'replace',
+      source: { type: 'text', content: v2 },
+    });
     expect(result.added).toBe(1);
     expect(result.removed).toBe(1);
 

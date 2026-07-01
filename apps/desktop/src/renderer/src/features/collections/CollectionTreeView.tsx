@@ -278,6 +278,8 @@ export function CollectionTreeView({
             onDragOver={(e) => {
               if (!onMoveRequest) return;
               e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'move';
               setDropTarget(node.id);
             }}
             onDragLeave={() => setDropTarget((t) => (t === node.id ? null : t))}
@@ -341,12 +343,35 @@ export function CollectionTreeView({
             e.dataTransfer.setData(DRAG_TYPE, node.id);
             e.dataTransfer.effectAllowed = 'move';
           }}
+          {...(onMoveRequest
+            ? {
+                // Dropping onto a request targets its containing folder (or the
+                // collection root), so the whole row area — not just the thin
+                // folder header — is a valid drop zone for that folder.
+                onDragOver: (e: React.DragEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropTarget(node.parentId ?? 'root');
+                },
+                onDragLeave: () =>
+                  setDropTarget((t) => (t === (node.parentId ?? 'root') ? null : t)),
+                onDrop: (e: React.DragEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDropTarget(null);
+                  const id = readDragId(e);
+                  if (id && id !== node.id) onMoveRequest(id, node.parentId);
+                },
+              }
+            : {})}
           onContextMenu={(e) => {
             e.preventDefault();
             openAt(e.clientX, e.clientY, items);
           }}
           className={cn(
             'group flex items-center pr-1 text-sm hover:bg-surface-2',
+            !!onMoveRequest && !isEditing && 'cursor-grab',
             node.id === selectedId && 'bg-surface-2',
           )}
         >
@@ -425,6 +450,7 @@ export function CollectionTreeView({
     ? {
         onDragOver: (e: React.DragEvent) => {
           e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
           setDropTarget('root');
         },
         onDragLeave: () => setDropTarget((t) => (t === 'root' ? null : t)),

@@ -68,8 +68,9 @@ type ReconcileOutcome =
  * value, the stored spec baseline, and the new spec value. Unedited fields are
  * updated; manually edited fields are preserved (safe mode) and reported as
  * conflicts when the spec also changed; everything is overwritten in replace
- * mode. New operations are added, and operations removed from the spec are
- * deleted — unless they were manually edited, in which case safe mode keeps them.
+ * mode. New operations are added. Operations removed from the spec are kept and
+ * flagged as `preserved` in safe mode (deletion is opt-in) and deleted only in
+ * replace mode.
  */
 export class SyncService {
   constructor(
@@ -177,14 +178,13 @@ export class SyncService {
       }
     }
 
-    // Removals.
+    // Removals. Safe merge never deletes: a request dropped from the spec is kept
+    // and flagged as preserved so the user decides its fate. Deletion is opt-in and
+    // happens only in replace mode. (Requirement: do not remove requests unless
+    // explicitly asked to.)
     for (const [key, record] of byKey) {
       if (specOps.has(key)) continue;
-      const edited =
-        record.name !== record.source.name ||
-        record.url !== record.source.url ||
-        record.method !== record.source.method;
-      if (mode === 'replace' || !edited) {
+      if (mode === 'replace') {
         this.persistence.scopedData.request(record.id); // drop the request's scoped variables/credentials
         this.persistence.requests.delete(record.id);
         removed += 1;
@@ -195,7 +195,7 @@ export class SyncService {
           type: 'preserved',
           key,
           name: record.name,
-          detail: 'Removed from spec but kept (manually edited)',
+          detail: 'No longer in the spec; kept (safe merge never deletes)',
         });
       }
     }
@@ -291,13 +291,56 @@ export class SyncService {
       });
     }
 
+    // Path-template variables (`{{token}}`) are backed by request-scoped variables
+    // seeded on import. Re-seed them here so existing requests pick up spec changes:
+    // new path params are always added; existing values are user data (preserved in
+    // safe mode, refreshed from the spec in replace mode).
+    const pathVarsChanged = this.syncPathVariables(record.id, op.pathVariables ?? [], mode);
+
     if (conflict) {
       return {
         kind: 'conflict',
         detail: `spec changed ${conflictFields.join(', ')}; local edits preserved`,
       };
     }
-    if (changed || detailsChanged) return { kind: 'updated', name: next.name };
+    if (changed || detailsChanged || pathVarsChanged) return { kind: 'updated', name: next.name };
     return { kind: 'unchanged' };
+  }
+
+  /**
+   * Reconciles an operation's path-template variables with the request-scoped
+   * variables that back them. A path param the request doesn't yet have is always
+   * seeded so `{{token}}` resolves. An existing value is treated as user data:
+   * preserved in safe mode, refreshed from the spec in replace mode. Returns
+   * whether anything was written (so the caller can report the request as updated).
+   */
+  private syncPathVariables(
+    requestId: string,
+    pathVariables: NonNullable<NormalizedOperation['pathVariables']>,
+    mode: SyncMode,
+  ): boolean {
+    if (pathVariables.length === 0) return false;
+    const existing = new Map(
+      this.persistence.variables
+        .listByScope('request', requestId)
+        .map((v) => [v.key, v.value] as const),
+    );
+    let wrote = false;
+    for (const variable of pathVariables) {
+      const current = existing.get(variable.key);
+      const isNew = current === undefined;
+      // Preserve a user-set value in safe mode; skip a no-op refresh in replace mode.
+      if (!isNew && (mode !== 'replace' || current === variable.value)) continue;
+      this.persistence.variables.upsert({
+        scope: 'request',
+        scopeId: requestId,
+        key: variable.key,
+        value: variable.value,
+        secret: false,
+        encrypted: false,
+      });
+      wrote = true;
+    }
+    return wrote;
   }
 }
