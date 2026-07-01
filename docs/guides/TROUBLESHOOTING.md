@@ -80,3 +80,52 @@ The install is healthy when both of these exist:
 
 - `node_modules/electron/path.txt` — contains `electron.exe` on Windows, `electron` on Linux, `Electron.app/Contents/MacOS/Electron` on macOS.
 - `node_modules/electron/dist/` — the extracted runtime (contains `electron.exe` on Windows).
+
+## App crashes on launch with `Cannot read properties of undefined (reading 'isPackaged')`
+
+### Symptom
+
+The renderer dev server starts fine (`http://localhost:5173`), but the moment Electron's main process launches it crashes — no window opens:
+
+```
+const isDev = !electron.app.isPackaged;
+                            ^
+TypeError: Cannot read properties of undefined (reading 'isPackaged')
+```
+
+Blanking the variable instead of removing it produces a different crash from the same root cause:
+
+```
+Assertion failed: (isolate_data->snapshot_data()) != nullptr
+npm error code 134
+```
+
+### Cause
+
+The `ELECTRON_RUN_AS_NODE` environment variable is set (to `1`, or even to an empty string). When present, it forces the Electron binary to run as **plain Node.js**, so Electron's own APIs are never injected — `require('electron')` returns the path string instead of the module, and `electron.app` is `undefined`. Some shells/terminals (and some tooling harnesses) export this on every new session, so it comes back even after you `unset` it.
+
+### Fix
+
+Remove the variable entirely from the child process — don't just blank it (an empty-but-present value still triggers the crash):
+
+```bash
+# bash / Git Bash — remove it only for this command
+env -u ELECTRON_RUN_AS_NODE npm run dev
+```
+
+```powershell
+# PowerShell
+Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+npm run dev
+```
+
+If it keeps coming back, whatever sets it lives in your shell profile or terminal configuration — remove the `ELECTRON_RUN_AS_NODE` export there for a permanent fix.
+
+### Verify
+
+```bash
+# should print nothing (variable absent)
+env -u ELECTRON_RUN_AS_NODE bash -c 'echo "[${ELECTRON_RUN_AS_NODE:-unset}]"'
+```
+
+A healthy launch logs `Application ready` and then `Main window shown`.

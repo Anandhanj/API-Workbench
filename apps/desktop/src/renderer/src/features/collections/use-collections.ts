@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateCollectionInput,
   CreateFolderInput,
@@ -22,6 +22,21 @@ export function useTree(collectionId: string | null | undefined) {
     queryKey: ['tree', collectionId ?? ''],
     queryFn: () => invoke('collection.tree', { collectionId: collectionId as string }),
     enabled: Boolean(collectionId) && isBridgeAvailable(),
+  });
+}
+
+/**
+ * Load the trees for several collections at once (shares the per-collection
+ * `['tree', id]` cache with {@link useTree}). Used to search across all
+ * collections at once; pass `enabled: false` to skip fetching when not searching.
+ */
+export function useTrees(collectionIds: string[], enabled: boolean) {
+  return useQueries({
+    queries: collectionIds.map((id) => ({
+      queryKey: ['tree', id],
+      queryFn: () => invoke('collection.tree', { collectionId: id }),
+      enabled: enabled && isBridgeAvailable(),
+    })),
   });
 }
 

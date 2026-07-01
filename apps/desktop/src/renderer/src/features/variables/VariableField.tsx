@@ -198,7 +198,7 @@ export function VariableField({
     onKeyDown: handleKeyDown,
     onScroll: syncScroll,
     onBlur: () => window.setTimeout(() => setOpen(false), 120),
-    className: cn(className, 'bg-transparent'),
+    className: cn(className, 'block bg-transparent'),
     style: fieldStyle,
   };
 

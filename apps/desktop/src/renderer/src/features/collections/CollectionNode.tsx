@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Boxes, ChevronRight, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
-import type { Collection } from '@shared/collection';
+import type { Collection, TreeNode } from '@shared/collection';
 import { cn } from '../../lib/cn';
 import { usePersistentState } from '../../lib/use-persistent-state';
 import { ContextMenu, type MenuItem } from '../../components/menu/ContextMenu';
@@ -10,6 +10,12 @@ import { CollectionTreeView, type OpenedRequest } from './CollectionTreeView';
 export interface CollectionNodeProps {
   collection: Collection;
   selectedRequestId: string | null;
+  /**
+   * Search mode: when set, the collection renders expanded with these
+   * pre-filtered nodes and all folders forced open (bypassing its own lazy tree
+   * load and persisted expand state).
+   */
+  searchNodes?: TreeNode[];
   onOpenRequest: (request: OpenedRequest, collectionId: string) => void;
   onToggleFavorite: (id: string) => void;
   onAddRequest: (collectionId: string) => void;
@@ -29,6 +35,7 @@ export interface CollectionNodeProps {
 export function CollectionNode({
   collection,
   selectedRequestId,
+  searchNodes,
   onOpenRequest,
   onToggleFavorite,
   onAddRequest,
@@ -40,6 +47,7 @@ export function CollectionNode({
   onDuplicateRequest,
   onMoveRequest,
 }: CollectionNodeProps): JSX.Element {
+  const searching = searchNodes !== undefined;
   // Expand state is persisted per collection so it survives an app restart.
   const [open, setOpen] = usePersistentState(`awb.expand.col.${collection.id}`, false);
   const [expandedList, setExpandedList] = usePersistentState<string[]>(
@@ -47,7 +55,10 @@ export function CollectionNode({
     [],
   );
   const expandedFolders = useMemo(() => new Set(expandedList), [expandedList]);
-  const tree = useTree(open ? collection.id : null);
+  // In search mode the parent supplies the (filtered) nodes; otherwise load lazily on expand.
+  const tree = useTree(!searching && open ? collection.id : null);
+  const treeNodes = searchNodes ?? tree.data ?? [];
+  const showTree = searching || open;
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const toggleFolder = (id: string): void =>
@@ -70,9 +81,13 @@ export function CollectionNode({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-2 text-left text-sm font-medium"
+          disabled={searching}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-2 text-left text-sm font-medium disabled:cursor-default"
         >
-          <ChevronRight size={14} className={cn('shrink-0 text-muted transition-transform', open && 'rotate-90')} />
+          <ChevronRight
+            size={14}
+            className={cn('shrink-0 text-muted transition-transform', showTree && 'rotate-90')}
+          />
           <Boxes size={15} className="shrink-0 text-accent" />
           <span className="truncate">{collection.name}</span>
         </button>
@@ -100,10 +115,11 @@ export function CollectionNode({
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
 
-      {open && (
+      {showTree && (
         <CollectionTreeView
-          nodes={tree.data ?? []}
+          nodes={treeNodes}
           expandedFolders={expandedFolders}
+          forceExpand={searching}
           selectedId={selectedRequestId}
           onToggleFolder={toggleFolder}
           onOpenRequest={(req) => onOpenRequest(req, collection.id)}
