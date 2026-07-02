@@ -1,4 +1,5 @@
 import type { BackupInfo } from '@shared/persistence';
+import type { WireAuthConfig } from '@shared/auth';
 import type { DatabaseConnection } from './connection';
 import type { AppDatabase } from './types';
 import { applyMigrations, currentVersion, type MigrationLogger } from './migrator';
@@ -88,6 +89,24 @@ export class PersistenceService {
 
   transaction<T>(fn: () => T): T {
     return withTransaction(this.connection.db, fn);
+  }
+
+  /**
+   * Sets every descendant folder and request of `folderId` to inherit their auth
+   * (`{ type: 'inherit' }`), so the whole subtree cascades from this folder. Runs
+   * in a single transaction; returns how many of each were updated.
+   */
+  applyAuthToChildren(folderId: string): { folders: number; requests: number } {
+    const inherit: WireAuthConfig = { type: 'inherit' };
+    return this.transaction(() => {
+      const folderIds = this.folders.descendantFolderIds(folderId);
+      for (const id of folderIds) this.folders.updateAuth(id, inherit);
+      const requestIds = [folderId, ...folderIds].flatMap((id) =>
+        this.requests.listByFolder(id).map((r) => r.id),
+      );
+      for (const id of requestIds) this.requests.setAuth(id, inherit);
+      return { folders: folderIds.length, requests: requestIds.length };
+    });
   }
 
   schemaVersion(): number {

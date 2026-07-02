@@ -16,6 +16,7 @@ import { Modal } from '../../components/menu/Modal';
 import { ImportPanel } from './ImportPanel';
 import { SyncPanel } from './SyncPanel';
 import { VersionsPanel } from './VersionsPanel';
+import { FolderAuthPanel } from './FolderAuthPanel';
 import { useConfirm } from '../../components/confirm/ConfirmProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { qualifiedContributionId } from '@shared/plugins';
@@ -59,6 +60,8 @@ export function CollectionsPage(): JSX.Element {
   const [selectedRequest, setSelectedRequest] = useState<
     (OpenedRequest & { collectionId: string }) | null
   >(null);
+  // A selected folder opens its authorization panel (mutually exclusive with a request).
+  const [selectedFolder, setSelectedFolder] = useState<{ id: string; name: string } | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [diff, setDiff] = useState<{ versionId: string; data: VersionDiff } | null>(null);
@@ -274,11 +277,18 @@ export function CollectionsPage(): JSX.Element {
                 collection={c}
                 searchNodes={searchNodes}
                 selectedRequestId={selectedRequest?.id ?? null}
+                selectedFolderId={selectedFolder?.id ?? null}
                 onOpenRequest={(req, colId) => {
                   setCollectionId(colId);
+                  setSelectedFolder(null);
                   setSelectedRequest({ ...req, collectionId: colId });
                   setEditingName(false);
                   mutations.openRequest.mutate(req.id);
+                }}
+                onOpenFolder={(id, name) => {
+                  setCollectionId(c.id);
+                  setSelectedRequest(null);
+                  setSelectedFolder({ id, name });
                 }}
                 onToggleFavorite={(id) => mutations.toggleFavorite.mutate(id)}
                 onAddRequest={(colId) =>
@@ -314,6 +324,7 @@ export function CollectionsPage(): JSX.Element {
                     })
                   ) {
                     mutations.deleteFolder.mutate(id);
+                    if (selectedFolder?.id === id) setSelectedFolder(null);
                   }
                 }}
                 onDeleteRequest={async (id, name) => {
@@ -448,6 +459,13 @@ export function CollectionsPage(): JSX.Element {
                 onToggle={() => setVarsPanelCollapsed((v) => !v)}
               />
             </div>
+          ) : selectedFolder ? (
+            <FolderAuthPanel
+              key={selectedFolder.id}
+              folderId={selectedFolder.id}
+              name={selectedFolder.name}
+              onClose={() => setSelectedFolder(null)}
+            />
           ) : collectionId ? (
             <>
               <div className="flex items-center justify-end gap-2">

@@ -23,7 +23,7 @@ import {
 import { RequestDetailFull, SaveRequestInput } from './request-details';
 import { ImportRequest, ImportResult } from './openapi';
 import { SyncRequest, SyncResult } from './sync';
-import { CredentialMeta, SaveCredentialInput } from './auth';
+import { CredentialMeta, SaveCredentialInput, WireAuthConfig } from './auth';
 import { RequestEnvelope, ProtocolResponse } from './protocol';
 import { Capability, InstalledPlugin, PluginContributionIndex, PluginInspection } from './plugins';
 import { RunTestsRequest, TestReport } from './testing';
@@ -148,11 +148,22 @@ export const IpcChannels = {
 
   // --- Folders ---
   'folder.create': { request: CreateFolderInput, response: Folder },
+  'folder.get': { request: IdOnly, response: Folder },
   'folder.rename': {
     request: z.object({ id: z.string(), name: z.string().min(1) }),
     response: Folder,
   },
   'folder.move': { request: z.object({ id: z.string(), parentId: NullableId }), response: Folder },
+  /** Sets a folder's own authorization config (null = inherit from parent). */
+  'folder.updateAuth': {
+    request: z.object({ id: z.string(), auth: WireAuthConfig.nullable() }),
+    response: Folder,
+  },
+  /** Sets every descendant folder and request to "inherit from parent". */
+  'folder.applyAuthToChildren': {
+    request: IdOnly,
+    response: z.object({ folders: z.number(), requests: z.number() }),
+  },
   'folder.delete': { request: IdOnly, response: Empty },
 
   // --- Requests ---

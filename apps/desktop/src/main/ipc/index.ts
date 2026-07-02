@@ -11,7 +11,7 @@ import type { CollectionExplorer } from '../collections';
 import type { ImportService, SyncService } from '../openapi';
 import type { VersioningService } from '../versioning';
 import type { VariableService } from '../variables';
-import type { AuthService } from '../auth';
+import { type AuthService, resolveInheritedAuth, type InheritanceLookups } from '../auth';
 import type { ExecutionService } from '../execution';
 import type { TestRunner } from '../testing';
 import { type WorkflowService, RunController } from '../workflows';
@@ -131,6 +131,16 @@ export function registerIpcHandlers(context: IpcContext, options: IpcOptions): v
     },
   };
 
+  // Folder/request lookups the inheritance resolver walks to turn an `inherit`
+  // request auth into the effective config from its parent folder chain (ADR-0009).
+  const inheritanceLookups: InheritanceLookups = {
+    folder: (id) => {
+      const f = persistence.folders.findById(id);
+      return f ? { parentId: f.parentId, auth: f.auth } : undefined;
+    },
+    requestFolderId: (id) => persistence.requests.findById(id)?.folderId,
+  };
+
   const handlers: { [C in IpcChannelName]: Handler<C> } = {
     'app.getInfo': () => ({
       name: app.getName(),
@@ -197,8 +207,11 @@ export function registerIpcHandlers(context: IpcContext, options: IpcOptions): v
     'collection.source': (request) => collections.getSource(request.collectionId),
 
     'folder.create': (request) => collections.createFolder(request),
+    'folder.get': (request) => collections.getFolder(request.id),
     'folder.rename': (request) => collections.renameFolder(request.id, request.name),
     'folder.move': (request) => collections.moveFolder(request.id, request.parentId),
+    'folder.updateAuth': (request) => collections.updateFolderAuth(request.id, request.auth),
+    'folder.applyAuthToChildren': (request) => collections.applyAuthToChildren(request.id),
     'folder.delete': (request) => {
       collections.deleteFolder(request.id);
       return {};
@@ -289,7 +302,23 @@ export function registerIpcHandlers(context: IpcContext, options: IpcOptions): v
     'request.execute': async (payload) => {
       // Stored credentials are resolved inside the execution dispatcher via the
       // AuthService port (ADR-0009), so the envelope passes through as-is.
-      const req = payload.request;
+      let req = payload.request;
+      // Folder-auth inheritance: an `inherit` request takes its effective auth
+      // from the nearest ancestor folder. Resolve it here (main owns the folder
+      // chain) before the envelope reaches execution; a `none` result drops auth.
+      if (req.auth?.type === 'inherit') {
+        const resolved = resolveInheritedAuth(
+          {
+            ...(req.variableContext?.requestId ? { requestId: req.variableContext.requestId } : {}),
+            ...(req.variableContext?.folderId !== undefined
+              ? { folderId: req.variableContext.folderId }
+              : {}),
+          },
+          inheritanceLookups,
+        );
+        const { auth: _inherit, ...rest } = req;
+        req = resolved.type === 'none' ? rest : { ...rest, auth: resolved };
+      }
       const id = req.id;
       const controller = id ? new AbortController() : undefined;
       if (id && controller) inflightExecutions.set(id, controller);

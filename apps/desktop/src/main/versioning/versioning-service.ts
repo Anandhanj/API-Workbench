@@ -58,7 +58,13 @@ export class VersioningService {
   private buildSnapshot(collectionId: string): VersionSnapshot {
     const folders: VersionFolder[] = this.persistence.folders
       .listByCollection(collectionId)
-      .map((f) => ({ id: f.id, parentId: f.parentId, name: f.name, position: f.position }));
+      .map((f) => ({
+        id: f.id,
+        parentId: f.parentId,
+        name: f.name,
+        position: f.position,
+        auth: f.auth ?? null,
+      }));
     const requests: VersionRequest[] = this.persistence.requests
       .listByCollection(collectionId)
       .map((r) => {
@@ -229,6 +235,8 @@ export class VersioningService {
           parentId: folder.parentId,
           name: folder.name,
           position: folder.position,
+          // Older snapshots predate folder auth; default to inherit (null).
+          auth: folder.auth ?? null,
           createdAt: now,
           updatedAt: now,
         };

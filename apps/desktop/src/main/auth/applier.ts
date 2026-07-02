@@ -23,7 +23,10 @@ function empty(): AuthArtifacts {
 export function applyAuth(config: AuthConfig, ctx: ApplyContext): AuthArtifacts {
   const out = empty();
   switch (config.type) {
+    // `inherit` is resolved away before execution (see auth/inheritance.ts); if a
+    // stray one reaches here (e.g. a workflow node), treat it as no auth like `none`.
     case 'none':
+    case 'inherit':
       return out;
 
     case 'bearer':

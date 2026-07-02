@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HttpMethod } from './collection';
+import { WireAuthConfig } from './auth';
 import { RequestSource } from './sync';
 
 /**
@@ -15,6 +16,8 @@ export const VersionFolder = z.object({
   parentId: z.string().nullable(),
   name: z.string(),
   position: z.number(),
+  /** Folder-level auth; null = inherit. Snapshots from before this default to null. */
+  auth: WireAuthConfig.nullable().default(null),
 });
 export type VersionFolder = z.infer<typeof VersionFolder>;
 

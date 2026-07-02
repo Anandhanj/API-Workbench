@@ -10,6 +10,7 @@ import type {
 } from '@shared/collection';
 import type { CollectionSourceInfo } from '@shared/collection';
 import type { RequestDetailFull, SaveRequestInput } from '@shared/request-details';
+import type { WireAuthConfig } from '@shared/auth';
 import type { PersistenceService } from '../persistence';
 import { PersistenceError } from '../persistence/types';
 
@@ -78,6 +79,23 @@ export class CollectionExplorer {
 
   renameFolder(id: string, name: string): Folder {
     return this.persistence.folders.rename(id, name);
+  }
+
+  /** A single folder, including its own auth config (null = inherit). */
+  getFolder(id: string): Folder {
+    return this.persistence.folders.get(id);
+  }
+
+  /** Sets a folder's own authorization config (null = inherit from parent). */
+  updateFolderAuth(id: string, auth: WireAuthConfig | null): Folder {
+    this.persistence.folders.get(id); // validate exists
+    return this.persistence.folders.updateAuth(id, auth);
+  }
+
+  /** Sets every descendant folder and request to inherit auth from this folder. */
+  applyAuthToChildren(id: string): { folders: number; requests: number } {
+    this.persistence.folders.get(id); // validate exists
+    return this.persistence.applyAuthToChildren(id);
   }
 
   /** Moves a folder under a new parent (or to the root), preventing cycles. */

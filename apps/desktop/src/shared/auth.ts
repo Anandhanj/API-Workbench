@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 export const AuthType = z.enum([
   'none',
+  'inherit',
   'bearer',
   'basic',
   'apiKey',
@@ -27,6 +28,9 @@ export type ApiKeyLocation = z.infer<typeof ApiKeyLocation>;
 
 export const AuthConfig = z.discriminatedUnion('type', [
   z.object({ type: z.literal('none') }),
+  // Inherit the effective auth from the parent folder chain (resolved in main at
+  // execution time). Distinct from `none`, which explicitly stops the walk.
+  z.object({ type: z.literal('inherit') }),
   z.object({ type: z.literal('bearer'), token: z.string() }),
   z.object({ type: z.literal('basic'), username: z.string(), password: z.string() }),
   z.object({

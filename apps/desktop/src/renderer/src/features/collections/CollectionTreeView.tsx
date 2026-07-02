@@ -88,8 +88,12 @@ export interface CollectionTreeViewProps {
   /** When true, every folder renders expanded regardless of `expandedFolders` (used while searching). */
   forceExpand?: boolean;
   selectedId?: string | null;
+  /** The currently selected folder (its auth panel is open), highlighted in the tree. */
+  selectedFolderId?: string | null;
   baseDepth?: number;
   onToggleFolder: (id: string) => void;
+  /** Select a folder to open its authorization panel. Falls back to expand when absent. */
+  onOpenFolder?: (id: string, name: string) => void;
   onOpenRequest: (request: OpenedRequest) => void;
   onToggleFavorite?: (id: string) => void;
   onDeleteFolder?: (id: string, name: string) => void;
@@ -116,8 +120,10 @@ export function CollectionTreeView({
   expandedFolders,
   forceExpand = false,
   selectedId,
+  selectedFolderId,
   baseDepth = 1,
   onToggleFolder,
+  onOpenFolder,
   onOpenRequest,
   onToggleFavorite,
   onDeleteFolder,
@@ -293,6 +299,7 @@ export function CollectionTreeView({
             }}
             className={cn(
               'group flex items-center pr-1 text-sm text-fg hover:bg-surface-2',
+              node.id === selectedFolderId && 'bg-surface-2',
               dropTarget === node.id && 'bg-accent/20 ring-1 ring-inset ring-accent',
             )}
           >
@@ -312,7 +319,9 @@ export function CollectionTreeView({
             ) : (
               <button
                 type="button"
-                onClick={() => onToggleFolder(node.id)}
+                onClick={() =>
+                  onOpenFolder ? onOpenFolder(node.id, node.name) : onToggleFolder(node.id)
+                }
                 className="ml-1.5 min-w-0 flex-1 truncate py-1 text-left"
               >
                 {node.name}

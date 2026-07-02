@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, max } from 'drizzle-orm';
 import type { Folder } from '@shared/collection';
+import type { WireAuthConfig } from '@shared/auth';
 import type { AppDatabase } from '../types';
 import { NotFoundError } from '../types';
 import { folders } from '../schema';
@@ -13,6 +14,7 @@ function toDto(row: FolderRow): Folder {
     parentId: row.parentId,
     name: row.name,
     position: row.position,
+    auth: row.auth ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -39,6 +41,7 @@ export class FolderRepository {
       parentId: input.parentId ?? null,
       name: input.name,
       position: this.nextPosition(input.collectionId),
+      auth: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,6 +93,36 @@ export class FolderRepository {
     const next: FolderRow = { ...existing, parentId, updatedAt: Date.now() };
     this.db.update(folders).set(next).where(eq(folders.id, id)).run();
     return toDto(next);
+  }
+
+  /** Sets this folder's own auth config. `null` means "inherit from parent". */
+  updateAuth(id: string, auth: WireAuthConfig | null): Folder {
+    const existing = this.get(id);
+    const next: FolderRow = { ...existing, auth, updatedAt: Date.now() };
+    this.db.update(folders).set(next).where(eq(folders.id, id)).run();
+    return toDto(next);
+  }
+
+  /**
+   * All folder ids beneath `id` (excluding `id` itself), walking the parent
+   * links breadth-first within the folder's collection.
+   */
+  descendantFolderIds(id: string): string[] {
+    const all = this.listByCollection(this.get(id).collectionId);
+    const childrenOf = new Map<string | null, string[]>();
+    for (const f of all) {
+      const list = childrenOf.get(f.parentId) ?? [];
+      list.push(f.id);
+      childrenOf.set(f.parentId, list);
+    }
+    const out: string[] = [];
+    const queue = [...(childrenOf.get(id) ?? [])];
+    while (queue.length > 0) {
+      const next = queue.shift() as string;
+      out.push(next);
+      queue.push(...(childrenOf.get(next) ?? []));
+    }
+    return out;
   }
 
   delete(id: string): void {

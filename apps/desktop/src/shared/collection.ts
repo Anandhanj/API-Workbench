@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WireAuthConfig } from './auth';
 
 /**
  * Transport DTOs for collection management (Phase 4): collections, folders,
@@ -31,6 +32,8 @@ export const Folder = z.object({
   parentId: z.string().nullable(),
   name: z.string().min(1),
   position: z.number(),
+  /** Folder-level auth; null = inherit from parent (ADR-0009 inheritance chain). */
+  auth: WireAuthConfig.nullable().default(null),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

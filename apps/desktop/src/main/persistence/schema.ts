@@ -1,5 +1,6 @@
 import { sqliteTable, text, integer, index, uniqueIndex, primaryKey, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { RequestSource } from '@shared/sync';
+import type { WireAuthConfig } from '@shared/auth';
 import type { RequestDetails } from '@shared/request-details';
 import type { WorkflowGraph } from '@shared/workflow';
 import type { PluginManifest } from '@shared/plugins';
@@ -76,6 +77,8 @@ export const folders = sqliteTable(
     parentId: text('parent_id').references((): AnySQLiteColumn => folders.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     position: integer('position').notNull(),
+    /** Folder-level auth config; null = inherit from parent (see ADR / migration 0012). */
+    auth: text('auth', { mode: 'json' }).$type<WireAuthConfig>(),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

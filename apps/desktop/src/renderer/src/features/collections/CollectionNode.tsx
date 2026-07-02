@@ -10,6 +10,8 @@ import { CollectionTreeView, type OpenedRequest } from './CollectionTreeView';
 export interface CollectionNodeProps {
   collection: Collection;
   selectedRequestId: string | null;
+  /** The folder whose authorization panel is open (highlighted in the tree). */
+  selectedFolderId?: string | null;
   /**
    * Search mode: when set, the collection renders expanded with these
    * pre-filtered nodes and all folders forced open (bypassing its own lazy tree
@@ -29,6 +31,8 @@ export interface CollectionNodeProps {
   onRenameRequest: (id: string, name: string) => void;
   onDuplicateRequest: (id: string) => void;
   onMoveRequest: (id: string, folderId: string | null) => void;
+  /** Select a folder to open its authorization panel. */
+  onOpenFolder?: (id: string, name: string) => void;
 }
 
 /**
@@ -38,8 +42,10 @@ export interface CollectionNodeProps {
 export function CollectionNode({
   collection,
   selectedRequestId,
+  selectedFolderId,
   searchNodes,
   onOpenRequest,
+  onOpenFolder,
   onToggleFavorite,
   onAddRequest,
   onAddFolder,
@@ -192,7 +198,9 @@ export function CollectionNode({
           expandedFolders={expandedFolders}
           forceExpand={searching}
           selectedId={selectedRequestId}
+          selectedFolderId={selectedFolderId}
           onToggleFolder={toggleFolder}
+          onOpenFolder={onOpenFolder}
           onOpenRequest={(req) => onOpenRequest(req, collection.id)}
           onToggleFavorite={onToggleFavorite}
           onAddFolder={(parentId) => {

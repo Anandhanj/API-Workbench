@@ -11,6 +11,12 @@ export interface AuthEditorProps {
   auth: EditorAuthConfig;
   onChange: (auth: EditorAuthConfig) => void;
   suggestions?: ResolvedKey[];
+  /**
+   * When set, offer an "Inherit from parent" option. Requests and nested folders
+   * enable this so they can defer to their parent folder's authorization; the
+   * effective config is resolved in the main process at execution time.
+   */
+  allowInherit?: boolean;
 }
 
 const TYPES: { value: AuthType; label: string }[] = [
@@ -21,8 +27,15 @@ const TYPES: { value: AuthType; label: string }[] = [
   { value: 'oauth2', label: 'OAuth 2.0' },
 ];
 
+const INHERIT_TYPE: { value: AuthType; label: string } = {
+  value: 'inherit',
+  label: 'Inherit from parent',
+};
+
 function defaultFor(type: AuthType): AuthConfig {
   switch (type) {
+    case 'inherit':
+      return { type: 'inherit' };
     case 'bearer':
       return { type: 'bearer', token: '' };
     case 'basic':
@@ -39,7 +52,13 @@ function defaultFor(type: AuthType): AuthConfig {
 const field = 'w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm';
 
 /** Authorization tab: scheme selector + variable-aware fields for each scheme. */
-export function AuthEditor({ auth, onChange, suggestions = [] }: AuthEditorProps): JSX.Element {
+export function AuthEditor({
+  auth,
+  onChange,
+  suggestions = [],
+  allowInherit = false,
+}: AuthEditorProps): JSX.Element {
+  const types = allowInherit ? [TYPES[0], INHERIT_TYPE, ...TYPES.slice(1)] : TYPES;
   const contributions = usePluginContributions();
   const providers = contributions.authProviders;
   // A qualified plugin type narrows to its provider; everything else is built-in.
@@ -68,7 +87,7 @@ export function AuthEditor({ auth, onChange, suggestions = [] }: AuthEditorProps
         onChange={(e) => selectType(e.target.value)}
         className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
       >
-        {TYPES.map((t) => (
+        {types.map((t) => (
           <option key={t.value} value={t.value}>{t.label}</option>
         ))}
         {providers.map((p) => {
@@ -104,6 +123,12 @@ export function AuthEditor({ auth, onChange, suggestions = [] }: AuthEditorProps
         <VariableField className={field} aria-label="Access token" placeholder="Access token" suggestions={suggestions} value={builtin.accessToken} onChange={(v) => onChange({ ...builtin, accessToken: v })} />
       )}
       {builtin?.type === 'none' && <p className="text-sm text-muted">This request does not use authorization.</p>}
+      {builtin?.type === 'inherit' && (
+        <p className="text-sm text-muted">
+          Uses the authorization set on the parent folder. If that folder also inherits, the setting
+          is taken from the next folder up, and so on.
+        </p>
+      )}
 
       {provider && (
         <>

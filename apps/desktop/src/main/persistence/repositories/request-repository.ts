@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNotNull, like, max, or } from 'drizzle-orm';
 import type { HttpMethod, RequestSummary } from '@shared/collection';
+import type { WireAuthConfig } from '@shared/auth';
 import type { RequestSource } from '@shared/sync';
 import { RequestDetails, type RequestDetailFull } from '@shared/request-details';
 import type { AppDatabase } from '../types';
@@ -139,6 +140,22 @@ export class RequestRepository {
 
   listByCollection(collectionId: string): RequestSummary[] {
     return this.db.select().from(requests).where(eq(requests.collectionId, collectionId)).all().map(toDto);
+  }
+
+  listByFolder(folderId: string): RequestSummary[] {
+    return this.db.select().from(requests).where(eq(requests.folderId, folderId)).all().map(toDto);
+  }
+
+  /**
+   * Overwrites just the `auth` slice of a request's stored definition, leaving
+   * the rest of `details` intact. Used by the folder "apply to children" cascade
+   * to set requests to `{ type: 'inherit' }`.
+   */
+  setAuth(id: string, auth: WireAuthConfig): RequestSummary {
+    const row = this.db.select().from(requests).where(eq(requests.id, id)).get();
+    if (!row) throw new NotFoundError('Request', id);
+    const details = RequestDetails.parse(row.details ?? {});
+    return this.patch(id, { details: { ...details, auth } });
   }
 
   /** Spec-originated requests (source not null), with their baseline, for syncing. */

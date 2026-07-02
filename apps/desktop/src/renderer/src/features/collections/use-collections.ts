@@ -4,6 +4,7 @@ import type {
   CreateFolderInput,
   CreateRequestInput,
 } from '@shared/collection';
+import type { WireAuthConfig } from '@shared/auth';
 import type { SaveRequestInput } from '@shared/request-details';
 import { invoke, isBridgeAvailable } from '../../lib/ipc';
 
@@ -70,6 +71,36 @@ export function useRequestDetail(id: string | null | undefined) {
     queryFn: () => invoke('request.get', { id: id as string }),
     enabled: Boolean(id) && isBridgeAvailable(),
   });
+}
+
+export function useFolderDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['folder', id ?? ''],
+    queryFn: () => invoke('folder.get', { id: id as string }),
+    enabled: Boolean(id) && isBridgeAvailable(),
+  });
+}
+
+/** Folder authorization mutations: set a folder's auth, or cascade inherit to children. */
+export function useFolderAuthMutations() {
+  const qc = useQueryClient();
+  return {
+    updateAuth: useMutation({
+      mutationFn: (input: { id: string; auth: WireAuthConfig | null }) =>
+        invoke('folder.updateAuth', input),
+      onSuccess: (_data, input) => {
+        void qc.invalidateQueries({ queryKey: ['folder', input.id] });
+      },
+    }),
+    applyToChildren: useMutation({
+      mutationFn: (id: string) => invoke('folder.applyAuthToChildren', { id }),
+      onSuccess: () => {
+        // Descendant folders and requests changed auth; refresh their caches.
+        void qc.invalidateQueries({ queryKey: ['folder'] });
+        void qc.invalidateQueries({ queryKey: ['request'] });
+      },
+    }),
+  };
 }
 
 export function useHistory(limit = 20) {

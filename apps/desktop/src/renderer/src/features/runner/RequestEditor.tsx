@@ -390,6 +390,7 @@ export function RequestEditor({
             auth={draft.auth}
             onChange={(auth) => patch({ auth })}
             suggestions={suggestions}
+            allowInherit
           />
         )}
         {tab === 'body' && (
